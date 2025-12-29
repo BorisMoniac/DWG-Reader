@@ -25,6 +25,8 @@ export default class DwgLoader {
     private flattenZ: boolean = true;
     private targetZ: number = 0;
     private importMode: ImportMode = 'all';
+    private db: DwgDatabase | null = null;
+    private processedBlocks: Set<string> = new Set();
 
     constructor(
         private readonly drawing: Drawing,
@@ -58,6 +60,8 @@ export default class DwgLoader {
     }
 
     async load(db: DwgDatabase): Promise<void> {
+        this.db = db;
+        this.processedBlocks.clear();
         await this.initializeDefaults();
         await this.loadLayers(db);
         await this.loadEntities(db);
@@ -358,31 +362,137 @@ export default class DwgLoader {
     }
 
     private async addInsert(editor: DwgEntityEditor, entity: DwgInsertEntity, layer: DwgLayer): Promise<void> {
+        if (!this.db || !entity.name) return;
+        
+        const blockRecord = this.db.tables.BLOCK_RECORD?.entries?.find(
+            b => b.name === entity.name
+        );
+        
+        if (!blockRecord || !blockRecord.entities || blockRecord.entities.length === 0) {
+            this.output.warn('INSERT: блок "{0}" не найден или пуст', entity.name);
+            return;
+        }
+        
+        this.output.info('INSERT: взрываем блок "{0}" ({1} объектов)', entity.name, blockRecord.entities.length);
+        
         const pos = entity.insertionPoint;
-        const z = this.getZ(pos.z);
+        const basePoint = blockRecord.basePoint || { x: 0, y: 0, z: 0 };
+        const scaleX = entity.xScale || 1;
+        const scaleY = entity.yScale || 1;
+        const scaleZ = entity.zScale || 1;
+        const rotation = (entity.rotation || 0) * Math.PI / 180;
+        const cosR = Math.cos(rotation);
+        const sinR = Math.sin(rotation);
         
-        const size = Math.max(entity.xScale, entity.yScale, entity.zScale) * 10;
-        const crossSize = size || 10;
+        for (const blockEntity of blockRecord.entities) {
+            try {
+                const transformed = this.transformEntity(blockEntity, pos, basePoint, scaleX, scaleY, scaleZ, cosR, sinR);
+                if (transformed) {
+                    await this.processEntity(editor, transformed);
+                }
+            } catch (e) {
+                this.output.warn('INSERT: ошибка обработки {0}: {1}', blockEntity.type, (e as Error).message);
+            }
+        }
+    }
+    
+    private transformEntity(
+        entity: DwgEntity, 
+        insertPos: { x: number; y: number; z: number },
+        basePoint: { x: number; y: number; z: number },
+        scaleX: number, scaleY: number, scaleZ: number,
+        cosR: number, sinR: number
+    ): DwgEntity | null {
+        const transform = (x: number, y: number, z: number): { x: number; y: number; z: number } => {
+            const dx = (x - basePoint.x) * scaleX;
+            const dy = (y - basePoint.y) * scaleY;
+            const dz = (z - basePoint.z) * scaleZ;
+            return {
+                x: insertPos.x + dx * cosR - dy * sinR,
+                y: insertPos.y + dx * sinR + dy * cosR,
+                z: insertPos.z + dz
+            };
+        };
         
-        const line1 = await editor.addLine({
-            a: [pos.x - crossSize, pos.y, z],
-            b: [pos.x + crossSize, pos.y, z],
-        });
-        await line1.setx('$layer', layer);
+        const clone = JSON.parse(JSON.stringify(entity)) as any;
         
-        const line2 = await editor.addLine({
-            a: [pos.x, pos.y - crossSize, z],
-            b: [pos.x, pos.y + crossSize, z],
-        });
-        await line2.setx('$layer', layer);
-        
-        if (entity.name) {
-            const text = await editor.addText({
-                position: [pos.x + crossSize, pos.y + crossSize, z],
-                height: crossSize / 2,
-                content: `[${entity.name}]`,
-            });
-            await text.setx('$layer', layer);
+        switch (entity.type) {
+            case 'LINE': {
+                const a = transform(clone.startPoint.x, clone.startPoint.y, clone.startPoint.z || 0);
+                const b = transform(clone.endPoint.x, clone.endPoint.y, clone.endPoint.z || 0);
+                clone.startPoint = a;
+                clone.endPoint = b;
+                return clone;
+            }
+            case 'CIRCLE': {
+                const c = transform(clone.center.x, clone.center.y, clone.center.z || 0);
+                clone.center = c;
+                clone.radius *= Math.abs(scaleX);
+                return clone;
+            }
+            case 'ARC': {
+                const c = transform(clone.center.x, clone.center.y, clone.center.z || 0);
+                clone.center = c;
+                clone.radius *= Math.abs(scaleX);
+                return clone;
+            }
+            case 'TEXT': {
+                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
+                const p = transform(pt.x, pt.y, pt.z || 0);
+                clone.insertionPoint = p;
+                clone.position = p;
+                if (clone.height) clone.height *= Math.abs(scaleY);
+                if (clone.textHeight) clone.textHeight *= Math.abs(scaleY);
+                return clone;
+            }
+            case 'MTEXT': {
+                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
+                const p = transform(pt.x, pt.y, pt.z || 0);
+                clone.insertionPoint = p;
+                clone.position = p;
+                if (clone.height) clone.height *= Math.abs(scaleY);
+                if (clone.textHeight) clone.textHeight *= Math.abs(scaleY);
+                return clone;
+            }
+            case 'LWPOLYLINE': {
+                if (clone.points) {
+                    clone.points = clone.points.map((pt: any) => {
+                        const t = transform(pt.x, pt.y, 0);
+                        return { ...pt, x: t.x, y: t.y };
+                    });
+                }
+                if (clone.vertices) {
+                    clone.vertices = clone.vertices.map((v: any) => {
+                        const t = transform(v.x || v.point?.x || 0, v.y || v.point?.y || 0, 0);
+                        return { ...v, x: t.x, y: t.y, point: t };
+                    });
+                }
+                return clone;
+            }
+            case 'POLYLINE2D':
+            case 'POLYLINE3D': {
+                if (clone.vertices) {
+                    clone.vertices = clone.vertices.map((v: any) => {
+                        const vx = v.point?.x ?? v.x ?? 0;
+                        const vy = v.point?.y ?? v.y ?? 0;
+                        const vz = v.point?.z ?? v.z ?? 0;
+                        const t = transform(vx, vy, vz);
+                        return { ...v, point: t, x: t.x, y: t.y, z: t.z };
+                    });
+                }
+                return clone;
+            }
+            case 'SPLINE': {
+                if (clone.controlPoints) {
+                    clone.controlPoints = clone.controlPoints.map((p: any) => transform(p.x, p.y, p.z || 0));
+                }
+                if (clone.fitPoints) {
+                    clone.fitPoints = clone.fitPoints.map((p: any) => transform(p.x, p.y, p.z || 0));
+                }
+                return clone;
+            }
+            default:
+                return null;
         }
     }
 }

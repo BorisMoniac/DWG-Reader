@@ -322,13 +322,50 @@ export default class DwgLoader {
 
     private getEntityColor(entity: DwgEntity): number | undefined {
         const e = entity as any;
-        // Цвет entity (не ByLayer)
-        if (e.color !== undefined && e.color !== 256) {
-            return e.color;
+        
+        // Логируем все поля связанные с цветом для отладки
+        const colorFields = ['color', 'colorIndex', 'colorValue', 'trueColor', 'rgb', 'aci', 'colorRef'];
+        const found: string[] = [];
+        for (const field of colorFields) {
+            if (e[field] !== undefined) {
+                found.push(`${field}=${e[field]}`);
+            }
         }
-        // RGB цвет
-        if (e.colorValue !== undefined) {
+        if (found.length > 0) {
+            this.output.info('COLOR {0}: {1}', entity.type, found.join(', '));
+        }
+        
+        // Проверяем разные варианты полей цвета
+        // colorIndex - индекс цвета AutoCAD (1-255, 256=ByLayer, 0=ByBlock)
+        if (e.colorIndex !== undefined && e.colorIndex !== 256 && e.colorIndex !== 0) {
+            return e.colorIndex;
+        }
+        // color - может быть индексом или объектом
+        if (e.color !== undefined && e.color !== 256 && e.color !== 0) {
+            if (typeof e.color === 'number') {
+                return e.color;
+            }
+            // Если это объект с RGB
+            if (e.color.r !== undefined) {
+                return (0xff << 24) | (e.color.r << 16) | (e.color.g << 8) | e.color.b;
+            }
+        }
+        // trueColor - RGB цвет
+        if (e.trueColor !== undefined) {
+            if (typeof e.trueColor === 'number') {
+                return e.trueColor | (0xff << 24);
+            }
+            if (e.trueColor.r !== undefined) {
+                return (0xff << 24) | (e.trueColor.r << 16) | (e.trueColor.g << 8) | e.trueColor.b;
+            }
+        }
+        // colorValue - RGB значение
+        if (e.colorValue !== undefined && e.colorValue !== 0) {
             return e.colorValue | (0xff << 24);
+        }
+        // rgb
+        if (e.rgb !== undefined) {
+            return e.rgb | (0xff << 24);
         }
         return undefined;
     }

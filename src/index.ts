@@ -1,6 +1,3 @@
-import { Dwg_File_Type, LibreDwg, DwgDatabase } from '@mlightcad/libredwg-web';
-import DwgLoader from "./loader";
-
 class DwgImporter implements WorkspaceImporter {
     constructor(private readonly output: OutputChannel) {}
 
@@ -12,6 +9,7 @@ class DwgImporter implements WorkspaceImporter {
         
         try {
             this.output.info('Loading WASM module...');
+            const { Dwg_File_Type, LibreDwg } = await import('@mlightcad/libredwg-web');
             const libredwg = await LibreDwg.create();
             
             this.output.info('Reading DWG file...');
@@ -22,9 +20,10 @@ class DwgImporter implements WorkspaceImporter {
             }
             
             this.output.info('Converting DWG data...');
-            const db: DwgDatabase = libredwg.convert(dwgData);
+            const db = libredwg.convert(dwgData);
             
             this.output.info('Processing {0} entities...', db.entities.length);
+            const { default: DwgLoader } = await import('./loader');
             const loader = new DwgLoader(drawing, this.output);
             await loader.load(db);
             

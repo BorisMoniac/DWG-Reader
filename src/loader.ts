@@ -9,7 +9,9 @@ import {
     DwgMTextEntity,
     DwgPolyline2dEntity,
     DwgPolyline3dEntity,
-    DwgSplineEntity
+    DwgSplineEntity,
+    DwgTableEntity,
+    DwgInsertEntity
 } from '@mlightcad/libredwg-web';
 
 export default class DwgLoader {
@@ -122,6 +124,12 @@ export default class DwgLoader {
                 case 'SPLINE':
                     await this.addSpline(editor, entity as DwgSplineEntity, layer);
                     break;
+                case 'ACAD_TABLE':
+                    await this.addTable(editor, entity as DwgTableEntity, layer);
+                    break;
+                case 'INSERT':
+                    await this.addInsert(editor, entity as DwgInsertEntity, layer);
+                    break;
                 default:
                     break;
             }
@@ -223,5 +231,81 @@ export default class DwgLoader {
             vertices: vertices,
         });
         await e.setx('$layer', layer);
+    }
+
+    private async addTable(editor: DwgEntityEditor, entity: DwgTableEntity, layer: DwgLayer): Promise<void> {
+        if (!entity.cells || entity.cells.length === 0) return;
+        
+        const startX = entity.startPoint.x;
+        const startY = entity.startPoint.y;
+        const z = this.getZ(entity.startPoint.z);
+        
+        let currentY = startY;
+        let cellIndex = 0;
+        
+        for (let row = 0; row < entity.rowCount; row++) {
+            let currentX = startX;
+            for (let col = 0; col < entity.columnCount; col++) {
+                if (cellIndex >= entity.cells.length) break;
+                
+                const cell = entity.cells[cellIndex];
+                if (cell.text && cell.text.trim()) {
+                    const e = await editor.addText({
+                        position: [currentX + 2, currentY - entity.rowHeightArr[row] / 2, z],
+                        height: cell.textHeight || 2.5,
+                        content: cell.text,
+                    });
+                    await e.setx('$layer', layer);
+                }
+                
+                currentX += entity.columnWidthArr[col];
+                cellIndex++;
+            }
+            currentY -= entity.rowHeightArr[row];
+        }
+        
+        const width = entity.columnWidthArr.reduce((a, b) => a + b, 0);
+        const height = entity.rowHeightArr.reduce((a, b) => a + b, 0);
+        
+        const outline: vec3[] = [
+            [startX, startY, z],
+            [startX + width, startY, z],
+            [startX + width, startY - height, z],
+            [startX, startY - height, z]
+        ];
+        const e = await editor.addPolyline3d({
+            vertices: outline,
+            flags: 1,
+        });
+        await e.setx('$layer', layer);
+    }
+
+    private async addInsert(editor: DwgEntityEditor, entity: DwgInsertEntity, layer: DwgLayer): Promise<void> {
+        const pos = entity.insertionPoint;
+        const z = this.getZ(pos.z);
+        
+        const size = Math.max(entity.xScale, entity.yScale, entity.zScale) * 10;
+        const crossSize = size || 10;
+        
+        const line1 = await editor.addLine({
+            a: [pos.x - crossSize, pos.y, z],
+            b: [pos.x + crossSize, pos.y, z],
+        });
+        await line1.setx('$layer', layer);
+        
+        const line2 = await editor.addLine({
+            a: [pos.x, pos.y - crossSize, z],
+            b: [pos.x, pos.y + crossSize, z],
+        });
+        await line2.setx('$layer', layer);
+        
+        if (entity.name) {
+            const text = await editor.addText({
+                position: [pos.x + crossSize, pos.y + crossSize, z],
+                height: crossSize / 2,
+                content: `[${entity.name}]`,
+            });
+            await text.setx('$layer', layer);
+        }
     }
 }

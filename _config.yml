@@ -1,0 +1,4 @@
+theme: jekyll-theme-cayman
+title: DWG reader
+description: Плагин для загрузки файлов в формате dwg
+show_downloads: true

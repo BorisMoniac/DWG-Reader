@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/albatros/schema.json",
+  "name": "ru.topomatic.dwg",
+  "displayName": "DWG reader",
+  "description": "Плагин для загрузки файлов в формате dwg",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "scripts": {
+    "serve": "albatros-cli serve",
+    "build": "albatros-cli build"
+  },
+  "keywords": [
+    "category::import"
+  ],
+  "author": {
+    "name": "ООО НПФ \"Топоматик\"",
+    "email": "support@topomatic.ru",
+    "url": "https://topomatic.ru"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/topomatic-code/ru.topomatic.dwg.git"
+  },
+  "icon": "favicon",
+  "license": "MIT",
+  "devDependencies": {
+    "albatros": "^1.2.3"
+  },
+  "albatros": {
+    "importers": [
+      {
+        "target": "wdx",
+        "description": "DWG",
+        "cmd": "dwg",
+        "filenamePattern": ".dwg"
+      }
+    ]
+  }
+}

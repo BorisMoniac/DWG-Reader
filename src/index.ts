@@ -13,7 +13,8 @@ class DwgImporter implements WorkspaceImporter {
         this.output.info('Initializing DWG reader...');
         
         try {
-            const libredwg = await LibreDwg.create();
+            this.output.info('Loading WASM module...');
+            const libredwg = await LibreDwg.create('./');
             
             this.output.info('Reading DWG file...');
             const dwgData = libredwg.dwg_read_data(buffer.buffer, Dwg_File_Type.DWG);

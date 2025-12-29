@@ -1,4 +1,3 @@
-import { DwgType } from "albatros/enums";
 import { 
     DwgDatabase, 
     DwgEntity,
@@ -11,52 +10,48 @@ import {
 } from '@mlightcad/libredwg-web';
 
 export default class DwgLoader {
-    public linetypes: Record<string, DwgLinetype> = {};
     public layers: Record<string, DwgLayer> = {};
-    public styles: Record<string, DwgTextStyle> = {};
-    public blocks: Record<string, DwgBlock> = {};
 
     constructor(
         private readonly drawing: Drawing,
         private readonly output: OutputChannel
     ) {}
 
-    async load(db: DwgDatabase): Promise<void> {
+    async load(db: DwgDatabase, progress: WorkerProgress): Promise<void> {
         await this.initializeDefaults();
         await this.loadLayers(db);
-        await this.loadEntities(db);
+        await this.loadEntities(db, progress);
     }
 
     private async initializeDefaults(): Promise<void> {
-        this.linetypes['Continuous'] = this.drawing.linetypes.continuous!;
-        this.linetypes['ByLayer'] = this.drawing.linetypes.bylayer!;
-        this.linetypes['ByBlock'] = this.drawing.linetypes.byblock!;
-        
         this.layers['0'] = this.drawing.layers.layer0!;
-        
-        this.styles['Standard'] = this.drawing.styles.standard!;
     }
 
     private async loadLayers(db: DwgDatabase): Promise<void> {
         const layerTable = db.tables.LAYER;
         if (!layerTable || !layerTable.entries) return;
 
-        for (const entry of layerTable.entries) {
-            if (entry.name === '0') {
-                this.layers[entry.name] = this.drawing.layers.layer0!;
-            } else {
-                const layerData: Partial<DwgLayerData> = {
-                    name: entry.name,
-                    color: entry.colorIndex ?? 7,
-                    hidden: entry.off ?? false,
-                };
-                this.layers[entry.name] = await this.drawing.layers.add(layerData);
+        await this.drawing.layers.beginUpdate();
+        try {
+            for (const entry of layerTable.entries) {
+                if (entry.name === '0') {
+                    this.layers[entry.name] = this.drawing.layers.layer0!;
+                } else {
+                    const layerData: Partial<DwgLayerData> = {
+                        name: entry.name,
+                        color: entry.colorIndex ?? 7,
+                        hidden: entry.off ?? false,
+                    };
+                    this.layers[entry.name] = await this.drawing.layers.add(layerData);
+                }
             }
+        } finally {
+            await this.drawing.layers.endUpdate();
         }
-        this.output.info('Loaded {0} layers', Object.keys(this.layers).length);
+        this.output.info('Загружено слоёв: {0}', Object.keys(this.layers).length);
     }
 
-    private async loadEntities(db: DwgDatabase): Promise<void> {
+    private async loadEntities(db: DwgDatabase, progress: WorkerProgress): Promise<void> {
         const model = this.drawing.layouts.model;
         if (!model) {
             this.output.warn('Model space not found');
@@ -64,128 +59,124 @@ export default class DwgLoader {
         }
         const editor = model.editor();
         
+        progress.indeterminate = false;
+        const total = db.entities.length;
+        
         await editor.beginEdit();
         try {
-            for (const entity of db.entities) {
+            for (let i = 0; i < total; i++) {
+                const entity = db.entities[i];
                 await this.processEntity(editor, entity);
+                
+                if (i % 100 === 0) {
+                    const percent = Math.round(i * 100 / total);
+                    progress.percents = percent;
+                    progress.label = `${percent}%`;
+                    progress.details = `Обработка объектов: ${i}/${total}`;
+                }
             }
         } finally {
             await editor.endEdit();
         }
         
-        this.output.info('Processed {0} entities', db.entities.length);
+        this.output.info('Обработано объектов: {0}', total);
     }
 
-    private async processEntity(editor: any, entity: DwgEntity): Promise<void> {
-        const baseData: Partial<DwgEntityData> = {
-            layer: this.layers[entity.layer] ?? this.layers['0'],
-            color: entity.colorIndex,
-            lineweight: entity.lineweight,
-            ltscale: entity.lineTypeScale,
-        };
+    private getLayer(entity: DwgEntity): DwgLayer {
+        return this.layers[entity.layer] ?? this.layers['0'];
+    }
 
-        if (entity.lineType && this.linetypes[entity.lineType]) {
-            baseData.linetype = this.linetypes[entity.lineType];
-        }
-
+    private async processEntity(editor: DwgEntityEditor, entity: DwgEntity): Promise<void> {
+        const layer = this.getLayer(entity);
+        
         try {
             switch (entity.type) {
                 case 'LINE':
-                    await this.addLine(editor, entity as DwgLineEntity, baseData);
+                    await this.addLine(editor, entity as DwgLineEntity, layer);
                     break;
                 case 'CIRCLE':
-                    await this.addCircle(editor, entity as DwgCircleEntity, baseData);
+                    await this.addCircle(editor, entity as DwgCircleEntity, layer);
                     break;
                 case 'ARC':
-                    await this.addArc(editor, entity as DwgArcEntity, baseData);
+                    await this.addArc(editor, entity as DwgArcEntity, layer);
                     break;
                 case 'LWPOLYLINE':
-                    await this.addLwPolyline(editor, entity as DwgLWPolylineEntity, baseData);
+                    await this.addLwPolyline(editor, entity as DwgLWPolylineEntity, layer);
                     break;
                 case 'TEXT':
-                    await this.addText(editor, entity as DwgTextEntity, baseData);
+                    await this.addText(editor, entity as DwgTextEntity, layer);
                     break;
                 case 'MTEXT':
-                    await this.addMText(editor, entity as DwgMTextEntity, baseData);
+                    await this.addMText(editor, entity as DwgMTextEntity, layer);
                     break;
                 default:
                     break;
             }
         } catch (e) {
-            this.output.warn('Failed to process entity {0}: {1}', entity.type, (e as Error).message);
+            this.output.warn('Ошибка обработки {0}: {1}', entity.type, (e as Error).message);
         }
     }
 
-    private async addLine(editor: any, entity: DwgLineEntity, baseData: Partial<DwgEntityData>): Promise<void> {
-        const data: Partial<DwgLineData> = {
-            ...baseData,
+    private async addLine(editor: DwgEntityEditor, entity: DwgLineEntity, layer: DwgLayer): Promise<void> {
+        const e = await editor.addLine({
             a: [entity.startPoint.x, entity.startPoint.y, entity.startPoint.z ?? 0],
             b: [entity.endPoint.x, entity.endPoint.y, entity.endPoint.z ?? 0],
-        };
-        await editor.addEntity(DwgType.line, data);
+        });
+        await e.setx('$layer', layer);
     }
 
-    private async addCircle(editor: any, entity: DwgCircleEntity, baseData: Partial<DwgEntityData>): Promise<void> {
-        const data: Partial<DwgCircleData> = {
-            ...baseData,
+    private async addCircle(editor: DwgEntityEditor, entity: DwgCircleEntity, layer: DwgLayer): Promise<void> {
+        const e = await editor.addCircle({
             center: [entity.center.x, entity.center.y, entity.center.z ?? 0],
             radius: entity.radius,
-        };
-        await editor.addEntity(DwgType.circle, data);
+        });
+        await e.setx('$layer', layer);
     }
 
-    private async addArc(editor: any, entity: DwgArcEntity, baseData: Partial<DwgEntityData>): Promise<void> {
+    private async addArc(editor: DwgEntityEditor, entity: DwgArcEntity, layer: DwgLayer): Promise<void> {
         const startAngle = entity.startAngle ?? 0;
         const endAngle = entity.endAngle ?? Math.PI * 2;
         let span = endAngle - startAngle;
         if (span < 0) span += Math.PI * 2;
 
-        const data: Partial<DwgArcData> = {
-            ...baseData,
+        const e = await editor.addArc({
             center: [entity.center.x, entity.center.y, entity.center.z ?? 0],
             radius: entity.radius,
             angle: startAngle,
             span: span,
-        };
-        await editor.addEntity(DwgType.arc, data);
+        });
+        await e.setx('$layer', layer);
     }
 
-    private async addLwPolyline(editor: any, entity: DwgLWPolylineEntity, baseData: Partial<DwgEntityData>): Promise<void> {
+    private async addLwPolyline(editor: DwgEntityEditor, entity: DwgLWPolylineEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
 
-        const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, v.bulge ?? 0] as vec3);
+        const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, 0] as vec3);
         
-        const isClosed = (entity.flag & 1) === 1;
-        
-        const data: Partial<DwgPolylineData> = {
-            ...baseData,
+        const e = await editor.addPolyline3d({
             vertices: vertices,
-            flags: isClosed ? 1 : 0,
-            elevation: entity.elevation ?? 0,
-            width: entity.constantWidth,
-        };
-        await editor.addEntity(DwgType.polyline, data);
+            flags: (entity.flag & 1) === 1 ? 1 : undefined,
+        });
+        await e.setx('$layer', layer);
     }
 
-    private async addText(editor: any, entity: DwgTextEntity, baseData: Partial<DwgEntityData>): Promise<void> {
-        const data: Partial<DwgTextData> = {
-            ...baseData,
+    private async addText(editor: DwgEntityEditor, entity: DwgTextEntity, layer: DwgLayer): Promise<void> {
+        const e = await editor.addText({
             position: [entity.startPoint.x, entity.startPoint.y, 0],
             height: entity.textHeight ?? 2.5,
             content: entity.text ?? '',
             rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
-        };
-        await editor.addEntity(DwgType.text, data);
+        });
+        await e.setx('$layer', layer);
     }
 
-    private async addMText(editor: any, entity: DwgMTextEntity, baseData: Partial<DwgEntityData>): Promise<void> {
-        const data: Partial<DwgTextData> = {
-            ...baseData,
+    private async addMText(editor: DwgEntityEditor, entity: DwgMTextEntity, layer: DwgLayer): Promise<void> {
+        const e = await editor.addText({
             position: [entity.insertionPoint.x, entity.insertionPoint.y, entity.insertionPoint.z ?? 0],
             height: entity.textHeight ?? 2.5,
             content: entity.text ?? '',
             rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
-        };
-        await editor.addEntity(DwgType.text, data);
+        });
+        await e.setx('$layer', layer);
     }
 }

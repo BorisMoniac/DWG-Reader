@@ -390,16 +390,18 @@ export default class DwgLoader {
         const e = await editor.addLine({
             a: [entity.startPoint.x, entity.startPoint.y, this.getZ(entity.startPoint.z)],
             b: [entity.endPoint.x, entity.endPoint.y, this.getZ(entity.endPoint.z)],
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addCircle(editor: DwgEntityEditor, entity: DwgCircleEntity, layer: DwgLayer): Promise<void> {
         const e = await editor.addCircle({
             center: [entity.center.x, entity.center.y, this.getZ(entity.center.z)],
             radius: entity.radius,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addArc(editor: DwgEntityEditor, entity: DwgArcEntity, layer: DwgLayer): Promise<void> {
@@ -413,8 +415,9 @@ export default class DwgLoader {
             radius: entity.radius,
             angle: startAngle,
             span: span,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addLwPolyline(editor: DwgEntityEditor, entity: DwgLWPolylineEntity, layer: DwgLayer): Promise<void> {
@@ -427,20 +430,22 @@ export default class DwgLoader {
         // Если есть ширина - используем 2D полилинию, иначе 3D
         if (width) {
             const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, v.bulge || 0] as vec3);
-            const e = await editor.addPolyline({
+            await editor.addPolyline({
                 vertices: vertices,
                 flags: (entity.flag & 1) === 1 ? 1 : undefined,
                 width: width,
                 elevation: z,
+                layer: layer,
+                color: this.getEntityColor(entity),
             });
-            await this.applyEntityProperties(e, layer, entity);
         } else {
             const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, z] as vec3);
-            const e = await editor.addPolyline3d({
+            await editor.addPolyline3d({
                 vertices: vertices,
                 flags: (entity.flag & 1) === 1 ? 1 : undefined,
+                layer: layer,
+                color: this.getEntityColor(entity),
             });
-            await this.applyEntityProperties(e, layer, entity);
         }
     }
 
@@ -458,13 +463,14 @@ export default class DwgLoader {
             return;
         }
         
-        const e = await editor.addText({
+        await editor.addText({
             position: [pos.x, pos.y, this.getZ(pos.z)],
             height: height,
             content: text,
             rotation: rotation,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addMText(editor: DwgEntityEditor, entity: DwgMTextEntity, layer: DwgLayer): Promise<void> {
@@ -487,44 +493,48 @@ export default class DwgLoader {
             return;
         }
         
-        const e = await editor.addText({
+        await editor.addText({
             position: [pos.x, pos.y, this.getZ(pos.z)],
             height: height,
             content: text.trim(),
             rotation: rotation,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addPolyline2d(editor: DwgEntityEditor, entity: DwgPolyline2dEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
         const z = this.getZ(entity.elevation);
         const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, z] as vec3);
-        const e = await editor.addPolyline3d({
+        await editor.addPolyline3d({
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addPolyline3d(editor: DwgEntityEditor, entity: DwgPolyline3dEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
         const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, this.getZ(v.point.z)] as vec3);
-        const e = await editor.addPolyline3d({
+        await editor.addPolyline3d({
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addSpline(editor: DwgEntityEditor, entity: DwgSplineEntity, layer: DwgLayer): Promise<void> {
         const points = entity.fitPoints?.length > 0 ? entity.fitPoints : entity.controlPoints;
         if (!points || points.length < 2) return;
         const vertices: vec3[] = points.map((p: any) => [p.x, p.y, this.getZ(p.z)] as vec3);
-        const e = await editor.addPolyline3d({
+        await editor.addPolyline3d({
             vertices: vertices,
+            layer: layer,
+            color: this.getEntityColor(entity),
         });
-        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addTable(editor: DwgEntityEditor, entity: DwgTableEntity, layer: DwgLayer): Promise<void> {

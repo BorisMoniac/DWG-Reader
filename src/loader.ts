@@ -224,7 +224,10 @@ export default class DwgLoader {
             };
         };
         
-        const clone = JSON.parse(JSON.stringify(entity)) as any;
+        // Клонируем с обработкой BigInt
+        const clone = JSON.parse(JSON.stringify(entity, (key, value) => 
+            typeof value === 'bigint' ? Number(value) : value
+        )) as any;
         
         // Для INSERT - трансформируем позицию и накапливаем масштаб/поворот
         if (entity.type === 'INSERT') {

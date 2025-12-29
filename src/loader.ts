@@ -14,10 +14,17 @@ import {
     DwgInsertEntity
 } from '@mlightcad/libredwg-web';
 
+type ImportMode = 'all' | 'tables' | 'geometry';
+
+const GEOMETRY_TYPES = ['LINE', 'CIRCLE', 'ARC', 'LWPOLYLINE', 'POLYLINE2D', 'POLYLINE3D', 'SPLINE', 'TEXT', 'MTEXT'];
+const TABLE_TYPES = ['ACAD_TABLE'];
+const BLOCK_TYPES = ['INSERT'];
+
 export default class DwgLoader {
     public layers: Record<string, DwgLayer> = {};
     private flattenZ: boolean = true;
     private targetZ: number = 0;
+    private importMode: ImportMode = 'all';
 
     constructor(
         private readonly drawing: Drawing,
@@ -27,6 +34,22 @@ export default class DwgLoader {
     setFlattenZ(flatten: boolean, z: number = 0): void {
         this.flattenZ = flatten;
         this.targetZ = z;
+    }
+
+    setImportMode(mode: ImportMode): void {
+        this.importMode = mode;
+    }
+
+    private shouldImport(entityType: string): boolean {
+        switch (this.importMode) {
+            case 'geometry':
+                return GEOMETRY_TYPES.includes(entityType);
+            case 'tables':
+                return TABLE_TYPES.includes(entityType);
+            case 'all':
+            default:
+                return true;
+        }
     }
 
     private getZ(z: number | undefined): number {
@@ -93,6 +116,8 @@ export default class DwgLoader {
     }
 
     private async processEntity(editor: DwgEntityEditor, entity: DwgEntity): Promise<void> {
+        if (!this.shouldImport(entity.type)) return;
+        
         const layer = this.getLayer(entity);
         
         try {
@@ -234,50 +259,102 @@ export default class DwgLoader {
     }
 
     private async addTable(editor: DwgEntityEditor, entity: DwgTableEntity, layer: DwgLayer): Promise<void> {
-        if (!entity.cells || entity.cells.length === 0) return;
+        this.output.info('TABLE: name={0}, rows={1}, cols={2}, cells={3}', 
+            entity.name, entity.rowCount, entity.columnCount, entity.cells?.length ?? 0);
         
-        const startX = entity.startPoint.x;
-        const startY = entity.startPoint.y;
-        const z = this.getZ(entity.startPoint.z);
+        if (!entity.cells || entity.cells.length === 0) {
+            this.output.warn('TABLE: пустая таблица, пропускаем');
+            return;
+        }
+        
+        if (!entity.rowHeightArr || !entity.columnWidthArr) {
+            this.output.warn('TABLE: нет данных о размерах строк/столбцов');
+            return;
+        }
+        
+        const startX = entity.startPoint?.x ?? 0;
+        const startY = entity.startPoint?.y ?? 0;
+        const z = this.getZ(entity.startPoint?.z);
+        
+        this.output.info('TABLE: startPoint=({0}, {1}), rowHeights={2}, colWidths={3}', 
+            startX, startY, entity.rowHeightArr.length, entity.columnWidthArr.length);
         
         let currentY = startY;
         let cellIndex = 0;
+        let textCount = 0;
         
-        for (let row = 0; row < entity.rowCount; row++) {
+        for (let row = 0; row < entity.rowCount && row < entity.rowHeightArr.length; row++) {
             let currentX = startX;
-            for (let col = 0; col < entity.columnCount; col++) {
+            const rowHeight = entity.rowHeightArr[row] || 10;
+            
+            for (let col = 0; col < entity.columnCount && col < entity.columnWidthArr.length; col++) {
                 if (cellIndex >= entity.cells.length) break;
                 
                 const cell = entity.cells[cellIndex];
-                if (cell.text && cell.text.trim()) {
+                const colWidth = entity.columnWidthArr[col] || 50;
+                
+                if (cell && cell.text && cell.text.trim()) {
+                    const textHeight = cell.textHeight || Math.min(rowHeight * 0.6, 2.5);
                     const e = await editor.addText({
-                        position: [currentX + 2, currentY - entity.rowHeightArr[row] / 2, z],
-                        height: cell.textHeight || 2.5,
-                        content: cell.text,
+                        position: [currentX + 2, currentY - rowHeight / 2, z],
+                        height: textHeight,
+                        content: cell.text.trim(),
                     });
                     await e.setx('$layer', layer);
+                    textCount++;
                 }
                 
-                currentX += entity.columnWidthArr[col];
+                currentX += colWidth;
                 cellIndex++;
             }
-            currentY -= entity.rowHeightArr[row];
+            currentY -= rowHeight;
         }
         
-        const width = entity.columnWidthArr.reduce((a, b) => a + b, 0);
-        const height = entity.rowHeightArr.reduce((a, b) => a + b, 0);
+        // Рисуем рамку таблицы
+        const width = entity.columnWidthArr.reduce((a, b) => a + (b || 0), 0);
+        const height = entity.rowHeightArr.reduce((a, b) => a + (b || 0), 0);
         
-        const outline: vec3[] = [
-            [startX, startY, z],
-            [startX + width, startY, z],
-            [startX + width, startY - height, z],
-            [startX, startY - height, z]
-        ];
-        const e = await editor.addPolyline3d({
-            vertices: outline,
-            flags: 1,
-        });
-        await e.setx('$layer', layer);
+        if (width > 0 && height > 0) {
+            const outline: vec3[] = [
+                [startX, startY, z],
+                [startX + width, startY, z],
+                [startX + width, startY - height, z],
+                [startX, startY - height, z]
+            ];
+            const e = await editor.addPolyline3d({
+                vertices: outline,
+                flags: 1,
+            });
+            await e.setx('$layer', layer);
+            
+            // Горизонтальные линии
+            let lineY = startY;
+            for (let row = 0; row < entity.rowHeightArr.length; row++) {
+                lineY -= entity.rowHeightArr[row] || 0;
+                if (row < entity.rowHeightArr.length - 1) {
+                    const hLine = await editor.addLine({
+                        a: [startX, lineY, z],
+                        b: [startX + width, lineY, z],
+                    });
+                    await hLine.setx('$layer', layer);
+                }
+            }
+            
+            // Вертикальные линии
+            let lineX = startX;
+            for (let col = 0; col < entity.columnWidthArr.length; col++) {
+                lineX += entity.columnWidthArr[col] || 0;
+                if (col < entity.columnWidthArr.length - 1) {
+                    const vLine = await editor.addLine({
+                        a: [lineX, startY, z],
+                        b: [lineX, startY - height, z],
+                    });
+                    await vLine.setx('$layer', layer);
+                }
+            }
+        }
+        
+        this.output.info('TABLE: загружено {0} текстовых ячеек', textCount);
     }
 
     private async addInsert(editor: DwgEntityEditor, entity: DwgInsertEntity, layer: DwgLayer): Promise<void> {

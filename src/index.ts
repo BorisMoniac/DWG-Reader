@@ -1,3 +1,5 @@
+type ImportMode = 'all' | 'tables' | 'geometry';
+
 class DwgImporter implements WorkspaceImporter {
     constructor(
         private readonly output: OutputChannel,
@@ -8,13 +10,28 @@ class DwgImporter implements WorkspaceImporter {
         const buffer = await workspace.root.get();
         const drawing = model as Drawing;
         
+        // Показываем диалог выбора что импортировать
+        const importMode = await this.context.showQuickPick([
+            { label: 'Все объекты', description: 'Геометрия + таблицы + блоки', value: 'all' as ImportMode },
+            { label: 'Только геометрия', description: 'Линии, полилинии, круги, дуги, текст', value: 'geometry' as ImportMode },
+            { label: 'Только таблицы', description: 'Импортировать только таблицы (ACAD_TABLE)', value: 'tables' as ImportMode }
+        ], {
+            title: 'Импорт DWG - Выбор объектов',
+            placeHolder: 'Что импортировать из DWG файла?'
+        });
+
+        if (!importMode) {
+            this.output.info('Import cancelled');
+            return;
+        }
+
         // Показываем диалог выбора режима Z-координат
         const zMode = await this.context.showQuickPick([
             { label: 'Исходные координаты', description: 'Сохранить Z из DWG файла', value: 'original' },
             { label: 'Установить отметку 0', description: 'Все объекты на Z=0', value: 'zero' },
             { label: 'Указать отметку...', description: 'Ввести своё значение Z', value: 'custom' }
         ], {
-            title: 'Импорт DWG',
+            title: 'Импорт DWG - Отметка Z',
             placeHolder: 'Выберите режим обработки Z-координат'
         });
 
@@ -47,9 +64,8 @@ class DwgImporter implements WorkspaceImporter {
             flattenZ = true;
             targetZ = parseFloat(zInput);
         }
-        // original: flattenZ = false (по умолчанию)
         
-        this.output.info('DWG import started (Z mode: {0}, target: {1})', zMode.value, targetZ);
+        this.output.info('DWG import started (mode: {0}, Z: {1}, target: {2})', importMode.value, zMode.value, targetZ);
         
         try {
             this.output.info('Loading WASM module...');
@@ -66,15 +82,25 @@ class DwgImporter implements WorkspaceImporter {
             this.output.info('Converting DWG data...');
             const db = libredwg.convert(dwgData);
             
-            this.output.info('Processing {0} entities...', db.entities.length);
+            // Статистика по типам объектов
+            const stats: Record<string, number> = {};
+            for (const entity of db.entities) {
+                stats[entity.type] = (stats[entity.type] || 0) + 1;
+            }
+            this.output.info('Найдено объектов: {0}', db.entities.length);
+            for (const type in stats) {
+                this.output.info('  - {0}: {1}', type, stats[type]);
+            }
+            
             const { default: DwgLoader } = await import('./loader');
             const loader = new DwgLoader(drawing, this.output);
             loader.setFlattenZ(flattenZ, targetZ);
+            loader.setImportMode(importMode.value as ImportMode);
             await loader.load(db);
             
             libredwg.dwg_free(dwgData);
             
-            this.output.info('DWG loaded successfully. Entities: {0}', db.entities.length);
+            this.output.info('DWG loaded successfully!');
         } catch (e) {
             this.output.error(e as Error);
             throw e;

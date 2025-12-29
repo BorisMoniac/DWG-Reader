@@ -1,13 +1,33 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg enable-background="new 0 0 200 200" version="1.1" viewBox="0 0 200 200" xml:space="preserve" xmlns="http://www.w3.org/2000/svg">
-<style type="text/css">
-	.st0{fill:url(#circle70_00000177468721607303748030000015380839826925384601_);}
-	.st1{fill:#FFFFFF;stroke:#014C46;stroke-width:1.1331;stroke-miterlimit:10;}
-	.st2{fill:url(#polygon102_00000178200583963262591950000014712108070207794359_);}
-	.st3{fill:#FFFFFF;stroke:#014C46;stroke-width:1.625;stroke-miterlimit:10;}
-	.st4{fill:#1D1D1B;stroke:#FFFFFF;stroke-width:2.6008;stroke-linecap:round;stroke-miterlimit:10;}
-	.st5{fill:none;stroke:#FFFFFF;stroke-width:2.6008;stroke-linecap:round;stroke-miterlimit:10;}
-	.st6{fill:#FFFFFF;}
-	.st7{fill:#014C46;}
-</style><g fill-opacity=".99602">
-<path d="m104.56 10h-59.561c-5.54 0-10 4.46-10 10v160c0 5.54 4.46 10 10 10h110c5.54 0 10-4.46 10-10v-110.09l-60.439-59.906z" fill="#c63"/><path d="m165 69.906-60.439-59.906v49.906c0 5.54 4.46 10 10 10z" fill="#bfbfbf"/><path d="m69.844 166.87q-2.6562 4.375-6.4062 6.5938-3.7188 2.2188-6.8438 2.2188-4.375 0-7.875-3.7812-3.4688-3.7812-3.4688-11.469 0-6.0625 2.3125-10.812 2.3125-4.7812 6.1875-7.5312 3.875-2.7812 9.5938-2.7812 1.6562 0 5 0.34375 0.5 0.0625 1.5 0.15625v-15.531h5.8438v50.438h-5.8438zm0-6.9062v-14.969q-3.0938-0.8125-5.75-0.8125-5.375 0-8.9688 4.1562-3.5625 4.1562-3.5625 11.312 0 5.1875 1.9375 7.8438 1.9688 2.625 4.4688 2.625 2.7188 0 6-2.75t5.875-7.4062zm18.719 14.75h-6.7188l13.719-18.281-12.812-16.625h7.4375l9.0938 11.719 8.8438-11.719h6.5938l-12.125 16.062 14.406 18.844h-7.4688l-10.625-13.906zm42.906 0-10.625-18.906-10.625 18.906h-6.7188l13.719-18.281-12.812-16.625h7.4375l9.0938 11.719 8.8438-11.719h6.5938l-12.125 16.062 14.406 18.844z" fill="#fff" stroke-width="5" aria-label="dwg"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Simple tall folder icon -->
+  <path d="M28 64
+           Q28 48 44 48
+           H102
+           Q112 48 118 56
+           L130 72
+           H212
+           Q228 72 228 88
+           V200
+           Q228 216 212 216
+           H44
+           Q28 216 28 200
+           Z"
+        fill="#F2C14E" stroke="#1E1E1E" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- Inner lip -->
+  <path d="M28 92
+           Q28 76 44 76
+           H212
+           Q228 76 228 92
+           V104
+           H28
+           Z"
+        fill="#FFD880" stroke="#1E1E1E" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- DWG label -->
+  <rect x="60" y="136" width="136" height="52" rx="12" ry="12"
+        fill="#FFFFFF" stroke="#1E1E1E" stroke-width="6"/>
+  <text x="128" y="170" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="28" font-weight="700" fill="#1E1E1E">DWG</text>
+</svg>

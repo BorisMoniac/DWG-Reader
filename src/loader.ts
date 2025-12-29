@@ -14,11 +14,23 @@ import {
 
 export default class DwgLoader {
     public layers: Record<string, DwgLayer> = {};
+    private flattenZ: boolean = true;
+    private targetZ: number = 0;
 
     constructor(
         private readonly drawing: Drawing,
         private readonly output: OutputChannel
     ) {}
+
+    setFlattenZ(flatten: boolean, z: number = 0): void {
+        this.flattenZ = flatten;
+        this.targetZ = z;
+    }
+
+    private getZ(z: number | undefined): number {
+        if (this.flattenZ) return this.targetZ;
+        return z ?? 0;
+    }
 
     async load(db: DwgDatabase): Promise<void> {
         await this.initializeDefaults();
@@ -120,15 +132,15 @@ export default class DwgLoader {
 
     private async addLine(editor: DwgEntityEditor, entity: DwgLineEntity, layer: DwgLayer): Promise<void> {
         const e = await editor.addLine({
-            a: [entity.startPoint.x, entity.startPoint.y, entity.startPoint.z ?? 0],
-            b: [entity.endPoint.x, entity.endPoint.y, entity.endPoint.z ?? 0],
+            a: [entity.startPoint.x, entity.startPoint.y, this.getZ(entity.startPoint.z)],
+            b: [entity.endPoint.x, entity.endPoint.y, this.getZ(entity.endPoint.z)],
         });
         await e.setx('$layer', layer);
     }
 
     private async addCircle(editor: DwgEntityEditor, entity: DwgCircleEntity, layer: DwgLayer): Promise<void> {
         const e = await editor.addCircle({
-            center: [entity.center.x, entity.center.y, entity.center.z ?? 0],
+            center: [entity.center.x, entity.center.y, this.getZ(entity.center.z)],
             radius: entity.radius,
         });
         await e.setx('$layer', layer);
@@ -141,7 +153,7 @@ export default class DwgLoader {
         if (span < 0) span += Math.PI * 2;
 
         const e = await editor.addArc({
-            center: [entity.center.x, entity.center.y, entity.center.z ?? 0],
+            center: [entity.center.x, entity.center.y, this.getZ(entity.center.z)],
             radius: entity.radius,
             angle: startAngle,
             span: span,
@@ -152,7 +164,8 @@ export default class DwgLoader {
     private async addLwPolyline(editor: DwgEntityEditor, entity: DwgLWPolylineEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
 
-        const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, 0] as vec3);
+        const z = this.getZ(undefined);
+        const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, z] as vec3);
         
         const e = await editor.addPolyline3d({
             vertices: vertices,
@@ -163,7 +176,7 @@ export default class DwgLoader {
 
     private async addText(editor: DwgEntityEditor, entity: DwgTextEntity, layer: DwgLayer): Promise<void> {
         const e = await editor.addText({
-            position: [entity.startPoint.x, entity.startPoint.y, 0],
+            position: [entity.startPoint.x, entity.startPoint.y, this.getZ(undefined)],
             height: entity.textHeight ?? 2.5,
             content: entity.text ?? '',
             rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
@@ -173,7 +186,7 @@ export default class DwgLoader {
 
     private async addMText(editor: DwgEntityEditor, entity: DwgMTextEntity, layer: DwgLayer): Promise<void> {
         const e = await editor.addText({
-            position: [entity.insertionPoint.x, entity.insertionPoint.y, entity.insertionPoint.z ?? 0],
+            position: [entity.insertionPoint.x, entity.insertionPoint.y, this.getZ(entity.insertionPoint.z)],
             height: entity.textHeight ?? 2.5,
             content: entity.text ?? '',
             rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
@@ -183,8 +196,8 @@ export default class DwgLoader {
 
     private async addPolyline2d(editor: DwgEntityEditor, entity: DwgPolyline2dEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
-        const elevation = entity.elevation ?? 0;
-        const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, elevation] as vec3);
+        const z = this.getZ(entity.elevation);
+        const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, z] as vec3);
         const e = await editor.addPolyline3d({
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
@@ -194,7 +207,7 @@ export default class DwgLoader {
 
     private async addPolyline3d(editor: DwgEntityEditor, entity: DwgPolyline3dEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
-        const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, v.point.z ?? 0] as vec3);
+        const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, this.getZ(v.point.z)] as vec3);
         const e = await editor.addPolyline3d({
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
@@ -205,7 +218,7 @@ export default class DwgLoader {
     private async addSpline(editor: DwgEntityEditor, entity: DwgSplineEntity, layer: DwgLayer): Promise<void> {
         const points = entity.fitPoints?.length > 0 ? entity.fitPoints : entity.controlPoints;
         if (!points || points.length < 2) return;
-        const vertices: vec3[] = points.map((p: any) => [p.x, p.y, p.z ?? 0] as vec3);
+        const vertices: vec3[] = points.map((p: any) => [p.x, p.y, this.getZ(p.z)] as vec3);
         const e = await editor.addPolyline3d({
             vertices: vertices,
         });

@@ -319,6 +319,27 @@ export default class DwgLoader {
         return this.layers[entity.layer] ?? this.layers['0'];
     }
 
+    private getEntityColor(entity: DwgEntity): number | undefined {
+        const e = entity as any;
+        // Цвет entity (не ByLayer)
+        if (e.color !== undefined && e.color !== 256) {
+            return e.color;
+        }
+        // RGB цвет
+        if (e.colorValue !== undefined) {
+            return e.colorValue | (0xff << 24);
+        }
+        return undefined;
+    }
+
+    private async applyEntityProperties(e: any, layer: DwgLayer, entity: DwgEntity): Promise<void> {
+        await e.setx('$layer', layer);
+        const color = this.getEntityColor(entity);
+        if (color !== undefined) {
+            await e.setx('color', color);
+        }
+    }
+
     private async processEntity(editor: DwgEntityEditor, entity: DwgEntity): Promise<void> {
         if (!this.shouldImport(entity.type)) return;
         
@@ -369,7 +390,7 @@ export default class DwgLoader {
             a: [entity.startPoint.x, entity.startPoint.y, this.getZ(entity.startPoint.z)],
             b: [entity.endPoint.x, entity.endPoint.y, this.getZ(entity.endPoint.z)],
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addCircle(editor: DwgEntityEditor, entity: DwgCircleEntity, layer: DwgLayer): Promise<void> {
@@ -377,7 +398,7 @@ export default class DwgLoader {
             center: [entity.center.x, entity.center.y, this.getZ(entity.center.z)],
             radius: entity.radius,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addArc(editor: DwgEntityEditor, entity: DwgArcEntity, layer: DwgLayer): Promise<void> {
@@ -392,7 +413,7 @@ export default class DwgLoader {
             angle: startAngle,
             span: span,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addLwPolyline(editor: DwgEntityEditor, entity: DwgLWPolylineEntity, layer: DwgLayer): Promise<void> {
@@ -405,27 +426,49 @@ export default class DwgLoader {
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addText(editor: DwgEntityEditor, entity: DwgTextEntity, layer: DwgLayer): Promise<void> {
+        const ent = entity as any;
+        const pos = ent.startPoint || ent.insertionPoint || ent.position || { x: 0, y: 0, z: 0 };
+        const text = ent.text || ent.textValue || ent.content || '';
+        const height = ent.textHeight || ent.height || 2.5;
+        const rotation = ent.rotation ? ent.rotation * Math.PI / 180 : 0;
+        
+        if (!text) return;
+        
         const e = await editor.addText({
-            position: [entity.startPoint.x, entity.startPoint.y, this.getZ(undefined)],
-            height: entity.textHeight ?? 2.5,
-            content: entity.text ?? '',
-            rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
+            position: [pos.x, pos.y, this.getZ(pos.z)],
+            height: height,
+            content: text,
+            rotation: rotation,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addMText(editor: DwgEntityEditor, entity: DwgMTextEntity, layer: DwgLayer): Promise<void> {
+        const ent = entity as any;
+        const pos = ent.insertionPoint || ent.position || { x: 0, y: 0, z: 0 };
+        let text = ent.text || ent.textValue || ent.content || '';
+        const height = ent.textHeight || ent.height || 2.5;
+        const rotation = ent.rotation ? ent.rotation * Math.PI / 180 : 0;
+        
+        // Очищаем MTEXT от форматирования
+        text = text.replace(/\\[A-Za-z][^;]*;/g, '')  // \A1; и т.д.
+                   .replace(/\{|\}/g, '')              // скобки
+                   .replace(/\\P/g, '\n')             // переносы строк
+                   .replace(/\\/g, '');               // экранирование
+        
+        if (!text.trim()) return;
+        
         const e = await editor.addText({
-            position: [entity.insertionPoint.x, entity.insertionPoint.y, this.getZ(entity.insertionPoint.z)],
-            height: entity.textHeight ?? 2.5,
-            content: entity.text ?? '',
-            rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
+            position: [pos.x, pos.y, this.getZ(pos.z)],
+            height: height,
+            content: text.trim(),
+            rotation: rotation,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addPolyline2d(editor: DwgEntityEditor, entity: DwgPolyline2dEntity, layer: DwgLayer): Promise<void> {
@@ -436,7 +479,7 @@ export default class DwgLoader {
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addPolyline3d(editor: DwgEntityEditor, entity: DwgPolyline3dEntity, layer: DwgLayer): Promise<void> {
@@ -446,7 +489,7 @@ export default class DwgLoader {
             vertices: vertices,
             flags: (entity.flag & 1) === 1 ? 1 : undefined,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addSpline(editor: DwgEntityEditor, entity: DwgSplineEntity, layer: DwgLayer): Promise<void> {
@@ -456,7 +499,7 @@ export default class DwgLoader {
         const e = await editor.addPolyline3d({
             vertices: vertices,
         });
-        await e.setx('$layer', layer);
+        await this.applyEntityProperties(e, layer, entity);
     }
 
     private async addTable(editor: DwgEntityEditor, entity: DwgTableEntity, layer: DwgLayer): Promise<void> {

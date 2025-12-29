@@ -17,10 +17,10 @@ export default class DwgLoader {
         private readonly output: OutputChannel
     ) {}
 
-    async load(db: DwgDatabase, progress: WorkerProgress): Promise<void> {
+    async load(db: DwgDatabase): Promise<void> {
         await this.initializeDefaults();
         await this.loadLayers(db);
-        await this.loadEntities(db, progress);
+        await this.loadEntities(db);
     }
 
     private async initializeDefaults(): Promise<void> {
@@ -51,7 +51,7 @@ export default class DwgLoader {
         this.output.info('Загружено слоёв: {0}', Object.keys(this.layers).length);
     }
 
-    private async loadEntities(db: DwgDatabase, progress: WorkerProgress): Promise<void> {
+    private async loadEntities(db: DwgDatabase): Promise<void> {
         const model = this.drawing.layouts.model;
         if (!model) {
             this.output.warn('Model space not found');
@@ -59,27 +59,16 @@ export default class DwgLoader {
         }
         const editor = model.editor();
         
-        progress.indeterminate = false;
-        const total = db.entities.length;
-        
         await editor.beginEdit();
         try {
-            for (let i = 0; i < total; i++) {
-                const entity = db.entities[i];
+            for (const entity of db.entities) {
                 await this.processEntity(editor, entity);
-                
-                if (i % 100 === 0) {
-                    const percent = Math.round(i * 100 / total);
-                    progress.percents = percent;
-                    progress.label = `${percent}%`;
-                    progress.details = `Обработка объектов: ${i}/${total}`;
-                }
             }
         } finally {
             await editor.endEdit();
         }
         
-        this.output.info('Обработано объектов: {0}', total);
+        this.output.info('Processed {0} entities', db.entities.length);
     }
 
     private getLayer(entity: DwgEntity): DwgLayer {

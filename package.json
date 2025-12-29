@@ -13,13 +13,12 @@
     "category::import"
   ],
   "author": {
-    "name": "ООО НПФ \"Топоматик\"",
-    "email": "support@topomatic.ru",
-    "url": "https://topomatic.ru"
+    "name": "RoburFan",
+    "url": "https://t.me/RoburFan"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/topomatic-code/ru.topomatic.dwg.git"
+    "url": "https://github.com/BorisMoniac/DWG-Reader.git"
   },
   "icon": "favicon",
   "license": "MIT",

@@ -6,7 +6,10 @@ import {
     DwgArcEntity,
     DwgLWPolylineEntity,
     DwgTextEntity,
-    DwgMTextEntity
+    DwgMTextEntity,
+    DwgPolyline2dEntity,
+    DwgPolyline3dEntity,
+    DwgSplineEntity
 } from '@mlightcad/libredwg-web';
 
 export default class DwgLoader {
@@ -98,6 +101,15 @@ export default class DwgLoader {
                 case 'MTEXT':
                     await this.addMText(editor, entity as DwgMTextEntity, layer);
                     break;
+                case 'POLYLINE2D':
+                    await this.addPolyline2d(editor, entity as DwgPolyline2dEntity, layer);
+                    break;
+                case 'POLYLINE3D':
+                    await this.addPolyline3d(editor, entity as DwgPolyline3dEntity, layer);
+                    break;
+                case 'SPLINE':
+                    await this.addSpline(editor, entity as DwgSplineEntity, layer);
+                    break;
                 default:
                     break;
             }
@@ -165,6 +177,37 @@ export default class DwgLoader {
             height: entity.textHeight ?? 2.5,
             content: entity.text ?? '',
             rotation: entity.rotation ? entity.rotation * Math.PI / 180 : 0,
+        });
+        await e.setx('$layer', layer);
+    }
+
+    private async addPolyline2d(editor: DwgEntityEditor, entity: DwgPolyline2dEntity, layer: DwgLayer): Promise<void> {
+        if (!entity.vertices || entity.vertices.length < 2) return;
+        const elevation = entity.elevation ?? 0;
+        const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, elevation] as vec3);
+        const e = await editor.addPolyline3d({
+            vertices: vertices,
+            flags: (entity.flag & 1) === 1 ? 1 : undefined,
+        });
+        await e.setx('$layer', layer);
+    }
+
+    private async addPolyline3d(editor: DwgEntityEditor, entity: DwgPolyline3dEntity, layer: DwgLayer): Promise<void> {
+        if (!entity.vertices || entity.vertices.length < 2) return;
+        const vertices: vec3[] = entity.vertices.map((v: any) => [v.point.x, v.point.y, v.point.z ?? 0] as vec3);
+        const e = await editor.addPolyline3d({
+            vertices: vertices,
+            flags: (entity.flag & 1) === 1 ? 1 : undefined,
+        });
+        await e.setx('$layer', layer);
+    }
+
+    private async addSpline(editor: DwgEntityEditor, entity: DwgSplineEntity, layer: DwgLayer): Promise<void> {
+        const points = entity.fitPoints?.length > 0 ? entity.fitPoints : entity.controlPoints;
+        if (!points || points.length < 2) return;
+        const vertices: vec3[] = points.map((p: any) => [p.x, p.y, p.z ?? 0] as vec3);
+        const e = await editor.addPolyline3d({
+            vertices: vertices,
         });
         await e.setx('$layer', layer);
     }

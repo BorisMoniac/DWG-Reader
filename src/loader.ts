@@ -386,9 +386,36 @@ export default class DwgLoader {
         
         for (const blockEntity of blockRecord.entities) {
             try {
-                const transformed = this.transformEntity(blockEntity, pos, basePoint, scaleX, scaleY, scaleZ, cosR, sinR);
-                if (transformed) {
-                    await this.processEntity(editor, transformed);
+                if (blockEntity.type === 'INSERT') {
+                    // Рекурсивно взрываем вложенные блоки
+                    const nestedInsert = blockEntity as DwgInsertEntity;
+                    const nestedPos = nestedInsert.insertionPoint || { x: 0, y: 0, z: 0 };
+                    
+                    // Трансформируем позицию вложенного блока
+                    const dx = (nestedPos.x - basePoint.x) * scaleX;
+                    const dy = (nestedPos.y - basePoint.y) * scaleY;
+                    const dz = (nestedPos.z - basePoint.z) * scaleZ;
+                    
+                    const transformedInsert: DwgInsertEntity = {
+                        ...nestedInsert,
+                        insertionPoint: {
+                            x: pos.x + dx * cosR - dy * sinR,
+                            y: pos.y + dx * sinR + dy * cosR,
+                            z: pos.z + dz
+                        },
+                        xScale: (nestedInsert.xScale || 1) * scaleX,
+                        yScale: (nestedInsert.yScale || 1) * scaleY,
+                        zScale: (nestedInsert.zScale || 1) * scaleZ,
+                        rotation: (nestedInsert.rotation || 0) + (entity.rotation || 0)
+                    };
+                    
+                    this.output.info('INSERT: вложенный блок "{0}"', nestedInsert.name);
+                    await this.addInsert(editor, transformedInsert, layer);
+                } else {
+                    const transformed = this.transformEntity(blockEntity, pos, basePoint, scaleX, scaleY, scaleZ, cosR, sinR);
+                    if (transformed) {
+                        await this.processEntity(editor, transformed);
+                    }
                 }
             } catch (e) {
                 this.output.warn('INSERT: ошибка обработки {0}: {1}', blockEntity.type, (e as Error).message);

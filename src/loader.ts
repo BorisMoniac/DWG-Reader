@@ -256,8 +256,9 @@ export default class DwgLoader {
                 return clone;
             case 'TEXT':
             case 'MTEXT': {
-                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
+                const pt = clone.startPoint || clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
                 const p = transform(pt.x, pt.y, pt.z || 0);
+                clone.startPoint = p;
                 clone.insertionPoint = p;
                 clone.position = p;
                 if (clone.height) clone.height *= Math.abs(scaleY);
@@ -419,14 +420,28 @@ export default class DwgLoader {
     private async addLwPolyline(editor: DwgEntityEditor, entity: DwgLWPolylineEntity, layer: DwgLayer): Promise<void> {
         if (!entity.vertices || entity.vertices.length < 2) return;
 
-        const z = this.getZ(undefined);
-        const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, z] as vec3);
+        const ent = entity as any;
+        const z = this.getZ(ent.elevation);
+        const width = ent.constantWidth || ent.startWidth || ent.globalWidth || undefined;
         
-        const e = await editor.addPolyline3d({
-            vertices: vertices,
-            flags: (entity.flag & 1) === 1 ? 1 : undefined,
-        });
-        await this.applyEntityProperties(e, layer, entity);
+        // Если есть ширина - используем 2D полилинию, иначе 3D
+        if (width) {
+            const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, v.bulge || 0] as vec3);
+            const e = await editor.addPolyline({
+                vertices: vertices,
+                flags: (entity.flag & 1) === 1 ? 1 : undefined,
+                width: width,
+                elevation: z,
+            });
+            await this.applyEntityProperties(e, layer, entity);
+        } else {
+            const vertices: vec3[] = entity.vertices.map((v: any) => [v.x, v.y, z] as vec3);
+            const e = await editor.addPolyline3d({
+                vertices: vertices,
+                flags: (entity.flag & 1) === 1 ? 1 : undefined,
+            });
+            await this.applyEntityProperties(e, layer, entity);
+        }
     }
 
     private async addText(editor: DwgEntityEditor, entity: DwgTextEntity, layer: DwgLayer): Promise<void> {
@@ -436,7 +451,12 @@ export default class DwgLoader {
         const height = ent.textHeight || ent.height || 2.5;
         const rotation = ent.rotation ? ent.rotation * Math.PI / 180 : 0;
         
-        if (!text) return;
+        this.output.info('TEXT: pos=({0},{1}), h={2}, text="{3}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, text?.substring(0, 30));
+        
+        if (!text) {
+            this.output.warn('TEXT: пустой текст, пропуск');
+            return;
+        }
         
         const e = await editor.addText({
             position: [pos.x, pos.y, this.getZ(pos.z)],
@@ -454,13 +474,18 @@ export default class DwgLoader {
         const height = ent.textHeight || ent.height || 2.5;
         const rotation = ent.rotation ? ent.rotation * Math.PI / 180 : 0;
         
+        this.output.info('MTEXT: pos=({0},{1}), h={2}, raw="{3}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, text?.substring(0, 30));
+        
         // Очищаем MTEXT от форматирования
         text = text.replace(/\\[A-Za-z][^;]*;/g, '')  // \A1; и т.д.
                    .replace(/\{|\}/g, '')              // скобки
                    .replace(/\\P/g, '\n')             // переносы строк
                    .replace(/\\/g, '');               // экранирование
         
-        if (!text.trim()) return;
+        if (!text.trim()) {
+            this.output.warn('MTEXT: пустой текст после очистки');
+            return;
+        }
         
         const e = await editor.addText({
             position: [pos.x, pos.y, this.getZ(pos.z)],

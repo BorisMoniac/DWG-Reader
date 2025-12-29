@@ -35,5 +35,8 @@
         "filenamePattern": ".dwg"
       }
     ]
+  },
+  "dependencies": {
+    "@mlightcad/libredwg-web": "^0.4.5"
   }
 }

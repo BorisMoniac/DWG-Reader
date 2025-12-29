@@ -14,7 +14,7 @@ class DwgImporter implements WorkspaceImporter {
         const importMode = await this.context.showQuickPick([
             { label: 'Все объекты', description: 'Геометрия + таблицы + блоки', value: 'all' as ImportMode },
             { label: 'Только геометрия', description: 'Линии, полилинии, круги, дуги, текст', value: 'geometry' as ImportMode },
-            { label: 'Только таблицы', description: 'Импортировать только таблицы (ACAD_TABLE)', value: 'tables' as ImportMode }
+            { label: 'Таблицы + текст', description: 'Таблицы и текстовые объекты рядом', value: 'tables' as ImportMode }
         ], {
             title: 'Импорт DWG - Выбор объектов',
             placeHolder: 'Что импортировать из DWG файла?'
@@ -76,7 +76,11 @@ class DwgImporter implements WorkspaceImporter {
             const dwgData = libredwg.dwg_read_data(buffer.buffer, Dwg_File_Type.DWG);
             
             if (!dwgData) {
-                throw new Error('Failed to read DWG file');
+                this.output.error('Не удалось прочитать DWG файл. Возможные причины:');
+                this.output.error('  - Неподдерживаемая версия AutoCAD (2018+)');
+                this.output.error('  - Поврежденный файл');
+                this.output.error('  - Попробуйте пересохранить в AutoCAD как DWG 2013 или ниже');
+                throw new Error('Failed to read DWG file - unsupported version or corrupted');
             }
             
             this.output.info('Converting DWG data...');

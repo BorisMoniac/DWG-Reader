@@ -17,7 +17,7 @@ import {
 type ImportMode = 'all' | 'tables' | 'geometry';
 
 const GEOMETRY_TYPES = ['LINE', 'CIRCLE', 'ARC', 'LWPOLYLINE', 'POLYLINE2D', 'POLYLINE3D', 'SPLINE', 'TEXT', 'MTEXT'];
-const TABLE_TYPES = ['ACAD_TABLE'];
+const TABLE_TYPES = ['ACAD_TABLE', 'TEXT', 'MTEXT'];
 const BLOCK_TYPES = ['INSERT'];
 
 export default class DwgLoader {

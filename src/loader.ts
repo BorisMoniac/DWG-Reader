@@ -103,16 +103,213 @@ export default class DwgLoader {
         }
         const editor = model.editor();
         
+        // Предварительно взрываем все блоки в плоский список
+        const explodedEntities = await this.explodeAllBlocks(db.entities, 3);
+        this.output.info('После взрыва блоков: {0} объектов', explodedEntities.length);
+        
         await editor.beginEdit();
         try {
-            for (const entity of db.entities) {
+            for (const entity of explodedEntities) {
                 await this.processEntity(editor, entity);
             }
         } finally {
             await editor.endEdit();
         }
         
-        this.output.info('Processed {0} entities', db.entities.length);
+        this.output.info('Обработано {0} объектов', explodedEntities.length);
+    }
+    
+    private async explodeAllBlocks(entities: DwgEntity[], maxDepth: number): Promise<DwgEntity[]> {
+        let result: DwgEntity[] = [];
+        
+        for (let depth = 0; depth < maxDepth; depth++) {
+            const toProcess = depth === 0 ? entities : result;
+            const newResult: DwgEntity[] = [];
+            let hasInserts = false;
+            
+            for (const entity of toProcess) {
+                if (entity.type === 'INSERT') {
+                    hasInserts = true;
+                    const exploded = this.explodeBlock(entity as DwgInsertEntity);
+                    newResult.push(...exploded);
+                } else if (entity.type === 'ACAD_TABLE') {
+                    // Пробуем взорвать таблицу как блок
+                    const exploded = this.explodeTable(entity as DwgTableEntity);
+                    newResult.push(...exploded);
+                } else {
+                    newResult.push(entity);
+                }
+            }
+            
+            result = newResult;
+            
+            if (!hasInserts) {
+                this.output.info('Взрыв завершен на глубине {0}', depth + 1);
+                break;
+            }
+            
+            this.output.info('Проход {0}: {1} объектов', depth + 1, result.length);
+        }
+        
+        return result;
+    }
+    
+    private explodeBlock(insert: DwgInsertEntity): DwgEntity[] {
+        if (!this.db || !insert.name) return [insert];
+        
+        const blockRecord = this.db.tables.BLOCK_RECORD?.entries?.find(
+            b => b.name === insert.name
+        );
+        
+        if (!blockRecord || !blockRecord.entities || blockRecord.entities.length === 0) {
+            return [];
+        }
+        
+        const pos = insert.insertionPoint || { x: 0, y: 0, z: 0 };
+        const basePoint = blockRecord.basePoint || { x: 0, y: 0, z: 0 };
+        const scaleX = insert.xScale || 1;
+        const scaleY = insert.yScale || 1;
+        const scaleZ = insert.zScale || 1;
+        const rotation = (insert.rotation || 0) * Math.PI / 180;
+        const cosR = Math.cos(rotation);
+        const sinR = Math.sin(rotation);
+        
+        const result: DwgEntity[] = [];
+        
+        for (const blockEntity of blockRecord.entities) {
+            const transformed = this.transformEntityData(
+                blockEntity, pos, basePoint, 
+                scaleX, scaleY, scaleZ, cosR, sinR,
+                insert.rotation || 0
+            );
+            if (transformed) {
+                // Сохраняем слой от insert если у entity нет своего
+                if (!transformed.layer && insert.layer) {
+                    (transformed as any).layer = insert.layer;
+                }
+                result.push(transformed);
+            }
+        }
+        
+        return result;
+    }
+    
+    private explodeTable(table: DwgTableEntity): DwgEntity[] {
+        // Если у таблицы есть вложенные entities - взрываем их
+        const tableAny = table as any;
+        if (tableAny.entities && Array.isArray(tableAny.entities)) {
+            this.output.info('TABLE: взрываем {0} вложенных объектов', tableAny.entities.length);
+            return tableAny.entities;
+        }
+        // Иначе возвращаем саму таблицу для обычной обработки
+        return [table];
+    }
+    
+    private transformEntityData(
+        entity: DwgEntity,
+        insertPos: { x: number; y: number; z: number },
+        basePoint: { x: number; y: number; z: number },
+        scaleX: number, scaleY: number, scaleZ: number,
+        cosR: number, sinR: number,
+        rotationDeg: number
+    ): DwgEntity | null {
+        const transform = (x: number, y: number, z: number): { x: number; y: number; z: number } => {
+            const dx = (x - basePoint.x) * scaleX;
+            const dy = (y - basePoint.y) * scaleY;
+            const dz = (z - basePoint.z) * scaleZ;
+            return {
+                x: insertPos.x + dx * cosR - dy * sinR,
+                y: insertPos.y + dx * sinR + dy * cosR,
+                z: insertPos.z + dz
+            };
+        };
+        
+        const clone = JSON.parse(JSON.stringify(entity)) as any;
+        
+        // Для INSERT - трансформируем позицию и накапливаем масштаб/поворот
+        if (entity.type === 'INSERT') {
+            const nestedPos = clone.insertionPoint || { x: 0, y: 0, z: 0 };
+            clone.insertionPoint = transform(nestedPos.x, nestedPos.y, nestedPos.z || 0);
+            clone.xScale = (clone.xScale || 1) * scaleX;
+            clone.yScale = (clone.yScale || 1) * scaleY;
+            clone.zScale = (clone.zScale || 1) * scaleZ;
+            clone.rotation = (clone.rotation || 0) + rotationDeg;
+            return clone;
+        }
+        
+        // Для остальных типов - обычная трансформация
+        switch (entity.type) {
+            case 'LINE':
+                clone.startPoint = transform(clone.startPoint.x, clone.startPoint.y, clone.startPoint.z || 0);
+                clone.endPoint = transform(clone.endPoint.x, clone.endPoint.y, clone.endPoint.z || 0);
+                return clone;
+            case 'CIRCLE':
+                clone.center = transform(clone.center.x, clone.center.y, clone.center.z || 0);
+                clone.radius *= Math.abs(scaleX);
+                return clone;
+            case 'ARC':
+                clone.center = transform(clone.center.x, clone.center.y, clone.center.z || 0);
+                clone.radius *= Math.abs(scaleX);
+                return clone;
+            case 'TEXT':
+            case 'MTEXT': {
+                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
+                const p = transform(pt.x, pt.y, pt.z || 0);
+                clone.insertionPoint = p;
+                clone.position = p;
+                if (clone.height) clone.height *= Math.abs(scaleY);
+                if (clone.textHeight) clone.textHeight *= Math.abs(scaleY);
+                return clone;
+            }
+            case 'LWPOLYLINE':
+                if (clone.points) {
+                    clone.points = clone.points.map((pt: any) => {
+                        const t = transform(pt.x, pt.y, 0);
+                        return { ...pt, x: t.x, y: t.y };
+                    });
+                }
+                if (clone.vertices) {
+                    clone.vertices = clone.vertices.map((v: any) => {
+                        const t = transform(v.x || v.point?.x || 0, v.y || v.point?.y || 0, 0);
+                        return { ...v, x: t.x, y: t.y, point: t };
+                    });
+                }
+                return clone;
+            case 'POLYLINE2D':
+            case 'POLYLINE3D':
+                if (clone.vertices) {
+                    clone.vertices = clone.vertices.map((v: any) => {
+                        const vx = v.point?.x ?? v.x ?? 0;
+                        const vy = v.point?.y ?? v.y ?? 0;
+                        const vz = v.point?.z ?? v.z ?? 0;
+                        const t = transform(vx, vy, vz);
+                        return { ...v, point: t, x: t.x, y: t.y, z: t.z };
+                    });
+                }
+                return clone;
+            case 'SPLINE':
+                if (clone.controlPoints) {
+                    clone.controlPoints = clone.controlPoints.map((p: any) => transform(p.x, p.y, p.z || 0));
+                }
+                if (clone.fitPoints) {
+                    clone.fitPoints = clone.fitPoints.map((p: any) => transform(p.x, p.y, p.z || 0));
+                }
+                return clone;
+            case 'ATTRIB':
+            case 'ATTDEF': {
+                // Атрибуты блоков - текстовые поля
+                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
+                const p = transform(pt.x, pt.y, pt.z || 0);
+                clone.insertionPoint = p;
+                clone.position = p;
+                if (clone.height) clone.height *= Math.abs(scaleY);
+                // Конвертируем в TEXT для отображения
+                clone.type = 'TEXT';
+                return clone;
+            }
+            default:
+                return clone;
+        }
     }
 
     private getLayer(entity: DwgEntity): DwgLayer {
@@ -155,9 +352,6 @@ export default class DwgLoader {
                     break;
                 case 'ACAD_TABLE':
                     await this.addTable(editor, entity as DwgTableEntity, layer);
-                    break;
-                case 'INSERT':
-                    await this.addInsert(editor, entity as DwgInsertEntity, layer);
                     break;
                 default:
                     break;
@@ -361,165 +555,4 @@ export default class DwgLoader {
         this.output.info('TABLE: загружено {0} текстовых ячеек', textCount);
     }
 
-    private async addInsert(editor: DwgEntityEditor, entity: DwgInsertEntity, layer: DwgLayer): Promise<void> {
-        if (!this.db || !entity.name) return;
-        
-        const blockRecord = this.db.tables.BLOCK_RECORD?.entries?.find(
-            b => b.name === entity.name
-        );
-        
-        if (!blockRecord || !blockRecord.entities || blockRecord.entities.length === 0) {
-            this.output.warn('INSERT: блок "{0}" не найден или пуст', entity.name);
-            return;
-        }
-        
-        this.output.info('INSERT: взрываем блок "{0}" ({1} объектов)', entity.name, blockRecord.entities.length);
-        
-        const pos = entity.insertionPoint;
-        const basePoint = blockRecord.basePoint || { x: 0, y: 0, z: 0 };
-        const scaleX = entity.xScale || 1;
-        const scaleY = entity.yScale || 1;
-        const scaleZ = entity.zScale || 1;
-        const rotation = (entity.rotation || 0) * Math.PI / 180;
-        const cosR = Math.cos(rotation);
-        const sinR = Math.sin(rotation);
-        
-        for (const blockEntity of blockRecord.entities) {
-            try {
-                if (blockEntity.type === 'INSERT') {
-                    // Рекурсивно взрываем вложенные блоки
-                    const nestedInsert = blockEntity as DwgInsertEntity;
-                    const nestedPos = nestedInsert.insertionPoint || { x: 0, y: 0, z: 0 };
-                    
-                    // Трансформируем позицию вложенного блока
-                    const dx = (nestedPos.x - basePoint.x) * scaleX;
-                    const dy = (nestedPos.y - basePoint.y) * scaleY;
-                    const dz = (nestedPos.z - basePoint.z) * scaleZ;
-                    
-                    const transformedInsert: DwgInsertEntity = {
-                        ...nestedInsert,
-                        insertionPoint: {
-                            x: pos.x + dx * cosR - dy * sinR,
-                            y: pos.y + dx * sinR + dy * cosR,
-                            z: pos.z + dz
-                        },
-                        xScale: (nestedInsert.xScale || 1) * scaleX,
-                        yScale: (nestedInsert.yScale || 1) * scaleY,
-                        zScale: (nestedInsert.zScale || 1) * scaleZ,
-                        rotation: (nestedInsert.rotation || 0) + (entity.rotation || 0)
-                    };
-                    
-                    this.output.info('INSERT: вложенный блок "{0}"', nestedInsert.name);
-                    await this.addInsert(editor, transformedInsert, layer);
-                } else {
-                    const transformed = this.transformEntity(blockEntity, pos, basePoint, scaleX, scaleY, scaleZ, cosR, sinR);
-                    if (transformed) {
-                        await this.processEntity(editor, transformed);
-                    }
-                }
-            } catch (e) {
-                this.output.warn('INSERT: ошибка обработки {0}: {1}', blockEntity.type, (e as Error).message);
-            }
-        }
-    }
-    
-    private transformEntity(
-        entity: DwgEntity, 
-        insertPos: { x: number; y: number; z: number },
-        basePoint: { x: number; y: number; z: number },
-        scaleX: number, scaleY: number, scaleZ: number,
-        cosR: number, sinR: number
-    ): DwgEntity | null {
-        const transform = (x: number, y: number, z: number): { x: number; y: number; z: number } => {
-            const dx = (x - basePoint.x) * scaleX;
-            const dy = (y - basePoint.y) * scaleY;
-            const dz = (z - basePoint.z) * scaleZ;
-            return {
-                x: insertPos.x + dx * cosR - dy * sinR,
-                y: insertPos.y + dx * sinR + dy * cosR,
-                z: insertPos.z + dz
-            };
-        };
-        
-        const clone = JSON.parse(JSON.stringify(entity)) as any;
-        
-        switch (entity.type) {
-            case 'LINE': {
-                const a = transform(clone.startPoint.x, clone.startPoint.y, clone.startPoint.z || 0);
-                const b = transform(clone.endPoint.x, clone.endPoint.y, clone.endPoint.z || 0);
-                clone.startPoint = a;
-                clone.endPoint = b;
-                return clone;
-            }
-            case 'CIRCLE': {
-                const c = transform(clone.center.x, clone.center.y, clone.center.z || 0);
-                clone.center = c;
-                clone.radius *= Math.abs(scaleX);
-                return clone;
-            }
-            case 'ARC': {
-                const c = transform(clone.center.x, clone.center.y, clone.center.z || 0);
-                clone.center = c;
-                clone.radius *= Math.abs(scaleX);
-                return clone;
-            }
-            case 'TEXT': {
-                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
-                const p = transform(pt.x, pt.y, pt.z || 0);
-                clone.insertionPoint = p;
-                clone.position = p;
-                if (clone.height) clone.height *= Math.abs(scaleY);
-                if (clone.textHeight) clone.textHeight *= Math.abs(scaleY);
-                return clone;
-            }
-            case 'MTEXT': {
-                const pt = clone.insertionPoint || clone.position || { x: 0, y: 0, z: 0 };
-                const p = transform(pt.x, pt.y, pt.z || 0);
-                clone.insertionPoint = p;
-                clone.position = p;
-                if (clone.height) clone.height *= Math.abs(scaleY);
-                if (clone.textHeight) clone.textHeight *= Math.abs(scaleY);
-                return clone;
-            }
-            case 'LWPOLYLINE': {
-                if (clone.points) {
-                    clone.points = clone.points.map((pt: any) => {
-                        const t = transform(pt.x, pt.y, 0);
-                        return { ...pt, x: t.x, y: t.y };
-                    });
-                }
-                if (clone.vertices) {
-                    clone.vertices = clone.vertices.map((v: any) => {
-                        const t = transform(v.x || v.point?.x || 0, v.y || v.point?.y || 0, 0);
-                        return { ...v, x: t.x, y: t.y, point: t };
-                    });
-                }
-                return clone;
-            }
-            case 'POLYLINE2D':
-            case 'POLYLINE3D': {
-                if (clone.vertices) {
-                    clone.vertices = clone.vertices.map((v: any) => {
-                        const vx = v.point?.x ?? v.x ?? 0;
-                        const vy = v.point?.y ?? v.y ?? 0;
-                        const vz = v.point?.z ?? v.z ?? 0;
-                        const t = transform(vx, vy, vz);
-                        return { ...v, point: t, x: t.x, y: t.y, z: t.z };
-                    });
-                }
-                return clone;
-            }
-            case 'SPLINE': {
-                if (clone.controlPoints) {
-                    clone.controlPoints = clone.controlPoints.map((p: any) => transform(p.x, p.y, p.z || 0));
-                }
-                if (clone.fitPoints) {
-                    clone.fitPoints = clone.fitPoints.map((p: any) => transform(p.x, p.y, p.z || 0));
-                }
-                return clone;
-            }
-            default:
-                return null;
-        }
-    }
 }

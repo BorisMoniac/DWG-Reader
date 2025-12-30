@@ -3,7 +3,7 @@
   "name": "ru.topomatic.dwg",
   "displayName": "DWG reader",
   "description": "Плагин для загрузки файлов в формате dwg",
-  "version": "1.0.13",
+  "version": "1.0.1",
   "main": "src/index.ts",
   "scripts": {
     "serve": "albatros-cli serve",

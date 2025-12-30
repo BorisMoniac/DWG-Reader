@@ -13,6 +13,21 @@ import {
     DwgTableEntity,
     DwgInsertEntity
 } from '@mlightcad/libredwg-web';
+import { TextAlignment } from 'albatros/enums';
+
+// MTEXT attachment points mapping to TextAlignment
+// 1=TopLeft, 2=TopCenter, 3=TopRight, 4=MiddleLeft, 5=MiddleCenter, 6=MiddleRight, 7=BottomLeft, 8=BottomCenter, 9=BottomRight
+const ATTACHMENT_TO_JUSTIFY: Record<number, TextAlignment> = {
+    1: TextAlignment.TopLeft,
+    2: TextAlignment.TopCenter,
+    3: TextAlignment.TopRight,
+    4: TextAlignment.MiddleLeft,
+    5: TextAlignment.MiddleCenter,
+    6: TextAlignment.MiddleRight,
+    7: TextAlignment.BottomLeft,
+    8: TextAlignment.BottomCenter,
+    9: TextAlignment.BottomRight,
+};
 
 export default class DwgLoader {
     public layers: Record<string, DwgLayer> = {};
@@ -496,11 +511,34 @@ export default class DwgLoader {
             return;
         }
         
+        // TEXT использует horizontalAlignment/verticalAlignment (0-2 каждый)
+        // Конвертируем в attachmentPoint формат для единообразия
+        const halign = ent.horizontalAlignment || 0;
+        const valign = ent.verticalAlignment || 0;
+        // valign: 0=baseline, 1=bottom, 2=middle, 3=top -> маппим к строкам attachmentPoint
+        // halign: 0=left, 1=center, 2=right
+        const attachMap: Record<string, TextAlignment> = {
+            '0_0': TextAlignment.Left,      // baseline left
+            '1_0': TextAlignment.Center,    // baseline center
+            '2_0': TextAlignment.Right,     // baseline right
+            '0_1': TextAlignment.BottomLeft,
+            '1_1': TextAlignment.BottomCenter,
+            '2_1': TextAlignment.BottomRight,
+            '0_2': TextAlignment.MiddleLeft,
+            '1_2': TextAlignment.MiddleCenter,
+            '2_2': TextAlignment.MiddleRight,
+            '0_3': TextAlignment.TopLeft,
+            '1_3': TextAlignment.TopCenter,
+            '2_3': TextAlignment.TopRight,
+        };
+        const justify = attachMap[`${halign}_${valign}`] || TextAlignment.Left;
+        
         await editor.addText({
             position: [pos.x, pos.y, this.getZ(pos.z)],
             height: height,
             content: text,
             rotation: rotation,
+            justify: justify,
             layer: layer,
             color: this.getEntityColor(entity),
         });
@@ -547,11 +585,15 @@ export default class DwgLoader {
             return;
         }
         
+        // Определяем justify по attachmentPoint
+        const justify = ATTACHMENT_TO_JUSTIFY[ent.attachmentPoint] || TextAlignment.Left;
+        
         await editor.addText({
             position: [pos.x, pos.y, this.getZ(pos.z)],
             height: height,
             content: text.trim(),
             rotation: rotation,
+            justify: justify,
             layer: layer,
             color: this.getEntityColor(entity),
         });

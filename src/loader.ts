@@ -467,15 +467,16 @@ export default class DwgLoader {
         const text = ent.text || ent.textValue || ent.content || '';
         const height = ent.textHeight || ent.height || 2.5;
         
-        // Логируем все поля связанные с rotation
-        const rotFields = ['rotation', 'angle', 'rotationAngle', 'textRotation', 'oblique'];
+        // Логируем все поля связанные с rotation и alignment
+        const rotFields = ['rotation', 'angle', 'direction', 'horizontalAlignment', 'verticalAlignment', 'halign', 'valign', 'alignment', 'justify'];
         const foundRot: string[] = [];
         for (const field of rotFields) {
             if (ent[field] !== undefined) {
-                foundRot.push(`${field}=${ent[field]}`);
+                const val = ent[field];
+                foundRot.push(`${field}=${typeof val === 'object' ? JSON.stringify(val) : val}`);
             }
         }
-        this.output.info('TEXT ROT fields: {0}', foundRot.join(', ') || 'none');
+        this.output.info('TEXT fields: {0}', foundRot.join(', ') || 'none');
         
         // TEXT может иметь rotation напрямую или direction как вектор
         let rotation = 0;
@@ -511,8 +512,8 @@ export default class DwgLoader {
         let text = ent.text || ent.textValue || ent.content || '';
         const height = ent.textHeight || ent.height || 2.5;
         
-        // Логируем все поля связанные с rotation
-        const rotFields = ['rotation', 'angle', 'rotationAngle', 'textRotation', 'direction', 'xAxisDirection'];
+        // Логируем все поля связанные с rotation и alignment
+        const rotFields = ['rotation', 'angle', 'direction', 'attachment', 'attachmentPoint', 'drawingDirection', 'flowDirection'];
         const foundRot: string[] = [];
         for (const field of rotFields) {
             if (ent[field] !== undefined) {
@@ -520,7 +521,7 @@ export default class DwgLoader {
                 foundRot.push(`${field}=${typeof val === 'object' ? JSON.stringify(val) : val}`);
             }
         }
-        this.output.info('MTEXT ROT fields: {0}', foundRot.join(', ') || 'none');
+        this.output.info('MTEXT fields: {0}', foundRot.join(', ') || 'none');
         
         // MTEXT использует direction как вектор направления текста
         let rotation = 0;

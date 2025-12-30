@@ -1,5 +1,3 @@
-type ImportMode = 'all' | 'tables' | 'geometry';
-
 class DwgImporter implements WorkspaceImporter {
     constructor(
         private readonly output: OutputChannel,
@@ -10,21 +8,6 @@ class DwgImporter implements WorkspaceImporter {
         const buffer = await workspace.root.get();
         const drawing = model as Drawing;
         
-        // Показываем диалог выбора что импортировать
-        const importMode = await this.context.showQuickPick([
-            { label: 'Все объекты', description: 'Геометрия + таблицы + блоки', value: 'all' as ImportMode },
-            { label: 'Только геометрия', description: 'Линии, полилинии, круги, дуги, текст', value: 'geometry' as ImportMode },
-            { label: 'Таблицы + текст', description: 'Таблицы и текстовые объекты рядом', value: 'tables' as ImportMode }
-        ], {
-            title: 'Импорт DWG - Выбор объектов',
-            placeHolder: 'Что импортировать из DWG файла?'
-        });
-
-        if (!importMode) {
-            this.output.info('Import cancelled');
-            return;
-        }
-
         // Показываем диалог выбора режима Z-координат
         const zMode = await this.context.showQuickPick([
             { label: 'Исходные координаты', description: 'Сохранить Z из DWG файла', value: 'original' },
@@ -65,7 +48,7 @@ class DwgImporter implements WorkspaceImporter {
             targetZ = parseFloat(zInput);
         }
         
-        this.output.info('DWG import started (mode: {0}, Z: {1}, target: {2})', importMode.value, zMode.value, targetZ);
+        this.output.info('DWG import started (Z: {0}, target: {1})', zMode.value, targetZ);
         
         try {
             this.output.info('Loading WASM module...');
@@ -99,7 +82,6 @@ class DwgImporter implements WorkspaceImporter {
             const { default: DwgLoader } = await import('./loader');
             const loader = new DwgLoader(drawing, this.output);
             loader.setFlattenZ(flattenZ, targetZ);
-            loader.setImportMode(importMode.value as ImportMode);
             await loader.load(db);
             
             libredwg.dwg_free(dwgData);

@@ -14,17 +14,10 @@ import {
     DwgInsertEntity
 } from '@mlightcad/libredwg-web';
 
-type ImportMode = 'all' | 'tables' | 'geometry';
-
-const GEOMETRY_TYPES = ['LINE', 'CIRCLE', 'ARC', 'LWPOLYLINE', 'POLYLINE2D', 'POLYLINE3D', 'SPLINE', 'TEXT', 'MTEXT'];
-const TABLE_TYPES = ['ACAD_TABLE', 'TEXT', 'MTEXT'];
-const BLOCK_TYPES = ['INSERT'];
-
 export default class DwgLoader {
     public layers: Record<string, DwgLayer> = {};
     private flattenZ: boolean = true;
     private targetZ: number = 0;
-    private importMode: ImportMode = 'all';
     private db: DwgDatabase | null = null;
     private processedBlocks: Set<string> = new Set();
 
@@ -36,22 +29,6 @@ export default class DwgLoader {
     setFlattenZ(flatten: boolean, z: number = 0): void {
         this.flattenZ = flatten;
         this.targetZ = z;
-    }
-
-    setImportMode(mode: ImportMode): void {
-        this.importMode = mode;
-    }
-
-    private shouldImport(entityType: string): boolean {
-        switch (this.importMode) {
-            case 'geometry':
-                return GEOMETRY_TYPES.includes(entityType);
-            case 'tables':
-                return TABLE_TYPES.includes(entityType);
-            case 'all':
-            default:
-                return true;
-        }
     }
 
     private getZ(z: number | undefined): number {
@@ -379,8 +356,6 @@ export default class DwgLoader {
     }
 
     private async processEntity(editor: DwgEntityEditor, entity: DwgEntity): Promise<void> {
-        if (!this.shouldImport(entity.type)) return;
-        
         const layer = this.getLayer(entity);
         
         try {
@@ -491,9 +466,10 @@ export default class DwgLoader {
         const pos = ent.startPoint || ent.insertionPoint || ent.position || { x: 0, y: 0, z: 0 };
         const text = ent.text || ent.textValue || ent.content || '';
         const height = ent.textHeight || ent.height || 2.5;
-        const rotation = ent.rotation ? ent.rotation * Math.PI / 180 : 0;
+        // rotation в libredwg-web уже в радианах
+        const rotation = ent.rotation || 0;
         
-        this.output.info('TEXT: pos=({0},{1}), h={2}, text="{3}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, text?.substring(0, 30));
+        this.output.info('TEXT: pos=({0},{1}), h={2}, rot={3}, text="{4}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), text?.substring(0, 30));
         
         if (!text) {
             this.output.warn('TEXT: пустой текст, пропуск');
@@ -515,9 +491,10 @@ export default class DwgLoader {
         const pos = ent.insertionPoint || ent.position || { x: 0, y: 0, z: 0 };
         let text = ent.text || ent.textValue || ent.content || '';
         const height = ent.textHeight || ent.height || 2.5;
-        const rotation = ent.rotation ? ent.rotation * Math.PI / 180 : 0;
+        // rotation в libredwg-web уже в радианах
+        const rotation = ent.rotation || 0;
         
-        this.output.info('MTEXT: pos=({0},{1}), h={2}, raw="{3}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, text?.substring(0, 30));
+        this.output.info('MTEXT: pos=({0},{1}), h={2}, rot={3}, raw="{4}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), text?.substring(0, 30));
         
         // Очищаем MTEXT от форматирования
         text = text.replace(/\\[A-Za-z][^;]*;/g, '')  // \A1; и т.д.

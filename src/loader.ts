@@ -477,10 +477,18 @@ export default class DwgLoader {
         }
         this.output.info('TEXT ROT fields: {0}', foundRot.join(', ') || 'none');
         
-        // rotation в libredwg-web в радианах (проверяем разные поля)
-        const rotation = ent.rotation ?? ent.angle ?? ent.rotationAngle ?? 0;
+        // TEXT может иметь rotation напрямую или direction как вектор
+        let rotation = 0;
+        if (ent.direction && (ent.direction.x !== 1 || ent.direction.y !== 0)) {
+            rotation = Math.atan2(ent.direction.y, ent.direction.x);
+        } else if (ent.rotation) {
+            rotation = ent.rotation;
+        } else if (ent.angle) {
+            rotation = ent.angle;
+        }
         
-        this.output.info('TEXT: pos=({0},{1}), h={2}, rot={3}, text="{4}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), text?.substring(0, 30));
+        this.output.info('TEXT: pos=({0},{1}), h={2}, rot={3}rad ({4}deg), text="{5}"', 
+            pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), (rotation * 180 / Math.PI).toFixed(1), text?.substring(0, 30));
         
         if (!text) {
             this.output.warn('TEXT: пустой текст, пропуск');
@@ -514,14 +522,18 @@ export default class DwgLoader {
         }
         this.output.info('MTEXT ROT fields: {0}', foundRot.join(', ') || 'none');
         
-        // rotation в libredwg-web в радианах (проверяем разные поля)
-        let rotation = ent.rotation ?? ent.angle ?? 0;
-        // MTEXT может иметь direction как вектор - вычисляем угол
-        if (rotation === 0 && ent.xAxisDirection) {
+        // MTEXT использует direction как вектор направления текста
+        let rotation = 0;
+        if (ent.direction && (ent.direction.x !== 1 || ent.direction.y !== 0)) {
+            rotation = Math.atan2(ent.direction.y, ent.direction.x);
+        } else if (ent.xAxisDirection && (ent.xAxisDirection.x !== 1 || ent.xAxisDirection.y !== 0)) {
             rotation = Math.atan2(ent.xAxisDirection.y, ent.xAxisDirection.x);
+        } else if (ent.rotation) {
+            rotation = ent.rotation;
         }
         
-        this.output.info('MTEXT: pos=({0},{1}), h={2}, rot={3}, raw="{4}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), text?.substring(0, 30));
+        this.output.info('MTEXT: pos=({0},{1}), h={2}, rot={3}rad ({4}deg), raw="{5}"', 
+            pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), (rotation * 180 / Math.PI).toFixed(1), text?.substring(0, 30));
         
         // Очищаем MTEXT от форматирования
         text = text.replace(/\\[A-Za-z][^;]*;/g, '')  // \A1; и т.д.

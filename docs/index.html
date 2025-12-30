@@ -72,6 +72,34 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 20px rgba(247, 159, 77, 0.4);
         }
+        .install-info {
+            background: rgba(255,255,255,0.05);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .install-title {
+            color: #fff;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .install-url {
+            display: block;
+            background: rgba(0,0,0,0.3);
+            padding: 0.8rem 1rem;
+            border-radius: 8px;
+            color: #f79f4d;
+            font-size: 0.75rem;
+            word-break: break-all;
+            margin-bottom: 0.8rem;
+            user-select: all;
+        }
+        .install-hint {
+            color: #888;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
         .footer {
             margin-top: 3rem;
             color: #666;
@@ -121,7 +149,12 @@
                 <div class="feature-text">Разбор блоков и таблиц</div>
             </div>
         </div>
-        <a href="package.json" class="btn">Установить плагин</a>
+        <div class="install-info">
+            <p class="install-title">Для установки:</p>
+            <code class="install-url">https://borismoniac.github.io/DWG-Reader/package.json</code>
+            <p class="install-hint">Скопируйте ссылку и вставьте в Топоматик 360:<br>Плагины → Установить по ссылке</p>
+        </div>
+        <a href="https://github.com/BorisMoniac/DWG-Reader" class="btn" target="_blank">GitHub</a>
         <div class="footer">
             © 2024-2025 RoburFan | Powered by libredwg-web
         </div>

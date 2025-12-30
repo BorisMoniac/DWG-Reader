@@ -466,8 +466,19 @@ export default class DwgLoader {
         const pos = ent.startPoint || ent.insertionPoint || ent.position || { x: 0, y: 0, z: 0 };
         const text = ent.text || ent.textValue || ent.content || '';
         const height = ent.textHeight || ent.height || 2.5;
-        // rotation в libredwg-web уже в радианах
-        const rotation = ent.rotation || 0;
+        
+        // Логируем все поля связанные с rotation
+        const rotFields = ['rotation', 'angle', 'rotationAngle', 'textRotation', 'oblique'];
+        const foundRot: string[] = [];
+        for (const field of rotFields) {
+            if (ent[field] !== undefined) {
+                foundRot.push(`${field}=${ent[field]}`);
+            }
+        }
+        this.output.info('TEXT ROT fields: {0}', foundRot.join(', ') || 'none');
+        
+        // rotation в libredwg-web в радианах (проверяем разные поля)
+        const rotation = ent.rotation ?? ent.angle ?? ent.rotationAngle ?? 0;
         
         this.output.info('TEXT: pos=({0},{1}), h={2}, rot={3}, text="{4}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), text?.substring(0, 30));
         
@@ -491,8 +502,24 @@ export default class DwgLoader {
         const pos = ent.insertionPoint || ent.position || { x: 0, y: 0, z: 0 };
         let text = ent.text || ent.textValue || ent.content || '';
         const height = ent.textHeight || ent.height || 2.5;
-        // rotation в libredwg-web уже в радианах
-        const rotation = ent.rotation || 0;
+        
+        // Логируем все поля связанные с rotation
+        const rotFields = ['rotation', 'angle', 'rotationAngle', 'textRotation', 'direction', 'xAxisDirection'];
+        const foundRot: string[] = [];
+        for (const field of rotFields) {
+            if (ent[field] !== undefined) {
+                const val = ent[field];
+                foundRot.push(`${field}=${typeof val === 'object' ? JSON.stringify(val) : val}`);
+            }
+        }
+        this.output.info('MTEXT ROT fields: {0}', foundRot.join(', ') || 'none');
+        
+        // rotation в libredwg-web в радианах (проверяем разные поля)
+        let rotation = ent.rotation ?? ent.angle ?? 0;
+        // MTEXT может иметь direction как вектор - вычисляем угол
+        if (rotation === 0 && ent.xAxisDirection) {
+            rotation = Math.atan2(ent.xAxisDirection.y, ent.xAxisDirection.x);
+        }
         
         this.output.info('MTEXT: pos=({0},{1}), h={2}, rot={3}, raw="{4}"', pos.x?.toFixed(2), pos.y?.toFixed(2), height, rotation?.toFixed(3), text?.substring(0, 30));
         

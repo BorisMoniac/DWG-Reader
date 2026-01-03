@@ -48,14 +48,19 @@ class DwgImporter implements WorkspaceImporter {
             targetZ = parseFloat(zInput);
         }
         
-        this.output.info('DWG import started (Z: {0}, target: {1})', zMode.value, targetZ);
+        const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
+        this.output.info('DWG import started (Z: {0}, target: {1}, size: {2} MB)', zMode.value, targetZ, fileSizeMB);
+        
+        if (buffer.byteLength > 50 * 1024 * 1024) {
+            this.output.warn('Внимание: файл больше 50 МБ, возможны проблемы с памятью');
+        }
         
         try {
             this.output.info('Loading WASM module...');
             const { Dwg_File_Type, LibreDwg } = await import('@mlightcad/libredwg-web');
             const libredwg = await LibreDwg.create();
             
-            this.output.info('Reading DWG file...');
+            this.output.info('Reading DWG file ({0} MB)...', fileSizeMB);
             const dwgData = libredwg.dwg_read_data(buffer.buffer, Dwg_File_Type.DWG);
             
             if (!dwgData) {
@@ -67,7 +72,19 @@ class DwgImporter implements WorkspaceImporter {
             }
             
             this.output.info('Converting DWG data...');
-            const db = libredwg.convert(dwgData);
+            let db;
+            try {
+                db = libredwg.convert(dwgData);
+            } catch (convertError) {
+                this.output.error('Ошибка при конвертации DWG данных');
+                this.output.error('Возможные причины:');
+                this.output.error('  - Файл слишком большой для обработки в браузере');
+                this.output.error('  - Файл содержит сложные объекты (прокси, OLE)');
+                this.output.error('  - Попробуйте упростить файл в AutoCAD (PURGE, AUDIT)');
+                this.output.error('  - Пересохраните как DWG 2010 или ниже');
+                libredwg.dwg_free(dwgData);
+                throw convertError;
+            }
             
             // Статистика по типам объектов
             const stats: Record<string, number> = {};
@@ -88,7 +105,18 @@ class DwgImporter implements WorkspaceImporter {
             
             this.output.info('DWG loaded successfully!');
         } catch (e) {
-            this.output.error(e as Error);
+            const err = e as Error;
+            if (err.message?.includes('memory access out of bounds')) {
+                this.output.error('Ошибка памяти WASM: файл слишком сложный для обработки');
+                this.output.error('Рекомендации:');
+                this.output.error('  1. Откройте файл в AutoCAD');
+                this.output.error('  2. Выполните команды: PURGE, AUDIT, OVERKILL');
+                this.output.error('  3. Удалите ненужные слои и объекты');
+                this.output.error('  4. Сохраните как DWG 2010 или ниже');
+                this.output.error('  5. Попробуйте загрузить снова');
+            } else {
+                this.output.error(err);
+            }
             throw e;
         }
     }

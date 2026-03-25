@@ -564,7 +564,7 @@ var aC = (() => {
       G = A, k = C;
     }), J = typeof window == "object", R = typeof WorkerGlobalScope < "u", F = typeof process == "object" && typeof process.versions == "object" && typeof process.versions.node == "string" && process.type != "renderer";
     if (F) {
-      const { createRequire: A } = await import("./__vite-browser-external-Dw-H500D.mjs").then((C) => C._);
+      const { createRequire: A } = await import("./__vite-browser-external-BR7tVR1x.mjs").then((C) => C._);
       var i = A(import.meta.url);
     }
     var V = Object.assign({}, Q), h = "./this.program", Y = "";

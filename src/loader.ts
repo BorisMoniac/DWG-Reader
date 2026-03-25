@@ -33,6 +33,7 @@ export default class DwgLoader {
     public layers: Record<string, DwgLayer> = {};
     private flattenZ: boolean = true;
     private targetZ: number = 0;
+    private explodeAttributesOnly: boolean = false;
     private db: DwgDatabase | null = null;
     private processedBlocks: Set<string> = new Set();
 
@@ -44,6 +45,10 @@ export default class DwgLoader {
     setFlattenZ(flatten: boolean, z: number = 0): void {
         this.flattenZ = flatten;
         this.targetZ = z;
+    }
+
+    setExplodeAttributesOnly(value: boolean): void {
+        this.explodeAttributesOnly = value;
     }
 
     private getZ(z: number | undefined): number {
@@ -168,7 +173,19 @@ export default class DwgLoader {
         
         const result: DwgEntity[] = [];
         
-        for (const blockEntity of blockRecord.entities) {
+        // Если режим "только атрибуты" (аналог BURST): берём ATTRIB с блока INSERT и из blockRecord
+        // Геометрия блока отбрасывается, остаются только атрибуты с реальными значениями
+        const insertAny = insert as any;
+        const attribsOnInsert: DwgEntity[] = Array.isArray(insertAny.attributes) ? insertAny.attributes : [];
+
+        const entitiesToProcess = this.explodeAttributesOnly
+            ? [
+                ...blockRecord.entities.filter(e => e.type === 'ATTRIB'),
+                ...attribsOnInsert.filter((e: DwgEntity) => e.type === 'ATTRIB')
+              ]
+            : blockRecord.entities;
+
+        for (const blockEntity of entitiesToProcess) {
             const transformed = this.transformEntityData(
                 blockEntity, pos, basePoint, 
                 scaleX, scaleY, scaleZ, cosR, sinR,

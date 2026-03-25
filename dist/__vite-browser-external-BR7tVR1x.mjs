@@ -1,10 +1,10 @@
-class v {
-  constructor(l, c) {
-    this.output = l, this.context = c;
+class y {
+  constructor(p, c) {
+    this.output = p, this.context = c;
   }
-  async import(l, c) {
-    var w;
-    const h = await l.root.get(), D = c, i = await this.context.showQuickPick([
+  async import(p, c) {
+    var D;
+    const d = await p.root.get(), b = c, i = await this.context.showQuickPick([
       { label: "Исходные координаты", description: "Сохранить Z из DWG файла", value: "original" },
       { label: "Установить отметку 0", description: "Все объекты на Z=0", value: "zero" },
       { label: "Указать отметку...", description: "Ввести своё значение Z", value: "custom" }
@@ -16,9 +16,9 @@ class v {
       this.output.info("Import cancelled");
       return;
     }
-    let d = !1, u = 0;
+    let h = !1, u = 0;
     if (i.value === "zero")
-      d = !0, u = 0;
+      h = !0, u = 0;
     else if (i.value === "custom") {
       const t = await this.context.showInputBox({
         title: "Отметка Z",
@@ -33,15 +33,26 @@ class v {
         this.output.info("Import cancelled");
         return;
       }
-      d = !0, u = parseFloat(t);
+      h = !0, u = parseFloat(t);
     }
-    const f = (h.byteLength / (1024 * 1024)).toFixed(2);
-    this.output.info("DWG import started (Z: {0}, target: {1}, size: {2} MB)", i.value, u, f), h.byteLength > 50 * 1024 * 1024 && this.output.warn("Внимание: файл больше 50 МБ, возможны проблемы с памятью");
+    const w = await this.context.showQuickPick([
+      { label: "Взорвать полностью", description: "Показать всю геометрию блоков (стандартный режим)", value: "full" },
+      { label: "Только атрибуты", description: "Показать только атрибуты блоков (аналог BURST)", value: "attributes" }
+    ], {
+      title: "Импорт DWG - Режим блоков",
+      placeHolder: "Выберите режим обработки блоков INSERT"
+    });
+    if (!w) {
+      this.output.info("Import cancelled");
+      return;
+    }
+    const v = w.value === "attributes", g = (d.byteLength / (1024 * 1024)).toFixed(2);
+    this.output.info("DWG import started (Z: {0}, target: {1}, size: {2} MB)", i.value, u, g), d.byteLength > 50 * 1024 * 1024 && this.output.warn("Внимание: файл больше 50 МБ, возможны проблемы с памятью");
     try {
       this.output.info("Loading WASM module...");
-      const { Dwg_File_Type: t, LibreDwg: o } = await import("./libredwg-web-BvZpOV5B.mjs"), r = await o.create();
-      this.output.info("Reading DWG file ({0} MB)...", f);
-      const s = r.dwg_read_data(h.buffer, t.DWG);
+      const { Dwg_File_Type: t, LibreDwg: o } = await import("./libredwg-web-eVFg5lRc.mjs"), r = await o.create();
+      this.output.info("Reading DWG file ({0} MB)...", g);
+      const s = r.dwg_read_data(d.buffer, t.DWG);
       if (!s)
         throw this.output.error("Не удалось прочитать DWG файл. Возможные причины:"), this.output.error("  - Неподдерживаемая версия AutoCAD (2018+)"), this.output.error("  - Поврежденный файл"), this.output.error("  - Попробуйте пересохранить в AutoCAD как DWG 2013 или ниже"), new Error("Failed to read DWG file - unsupported version or corrupted");
       this.output.info("Converting DWG data...");
@@ -57,16 +68,16 @@ class v {
       this.output.info("Найдено объектов: {0}", n.entities.length);
       for (const e in a)
         this.output.info("  - {0}: {1}", e, a[e]);
-      const { default: m } = await import("./loader-Btvj0rdm.mjs"), g = new m(D, this.output);
-      g.setFlattenZ(d, u), await g.load(n), r.dwg_free(s), this.output.info("DWG loaded successfully!");
+      const { default: m } = await import("./loader-BYkY4-ap.mjs"), f = new m(b, this.output);
+      f.setFlattenZ(h, u), f.setExplodeAttributesOnly(v), await f.load(n), r.dwg_free(s), this.output.info("DWG loaded successfully!");
     } catch (t) {
       const o = t;
-      throw (w = o.message) != null && w.includes("memory access out of bounds") ? (this.output.error("Ошибка памяти WASM: файл слишком сложный для обработки"), this.output.error("Рекомендации:"), this.output.error("  1. Откройте файл в AutoCAD"), this.output.error("  2. Выполните команды: PURGE, AUDIT, OVERKILL"), this.output.error("  3. Удалите ненужные слои и объекты"), this.output.error("  4. Сохраните как DWG 2010 или ниже"), this.output.error("  5. Попробуйте загрузить снова")) : this.output.error(o), t;
+      throw (D = o.message) != null && D.includes("memory access out of bounds") ? (this.output.error("Ошибка памяти WASM: файл слишком сложный для обработки"), this.output.error("Рекомендации:"), this.output.error("  1. Откройте файл в AutoCAD"), this.output.error("  2. Выполните команды: PURGE, AUDIT, OVERKILL"), this.output.error("  3. Удалите ненужные слои и объекты"), this.output.error("  4. Сохраните как DWG 2010 или ниже"), this.output.error("  5. Попробуйте загрузить снова")) : this.output.error(o), t;
     }
   }
 }
 const G = {
-  dwg: (p) => new v(p.createOutputChannel("dwg"), p)
+  dwg: (l) => new y(l.createOutputChannel("dwg"), l)
 }, W = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null
 }, Symbol.toStringTag, { value: "Module" }));

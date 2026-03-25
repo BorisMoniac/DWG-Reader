@@ -48,6 +48,22 @@ class DwgImporter implements WorkspaceImporter {
             targetZ = parseFloat(zInput);
         }
         
+        // Диалог выбора режима обработки блоков
+        const blockMode = await this.context.showQuickPick([
+            { label: 'Взорвать полностью', description: 'Показать всю геометрию блоков (стандартный режим)', value: 'full' },
+            { label: 'Только атрибуты', description: 'Показать только атрибуты блоков (аналог BURST)', value: 'attributes' }
+        ], {
+            title: 'Импорт DWG - Режим блоков',
+            placeHolder: 'Выберите режим обработки блоков INSERT'
+        });
+
+        if (!blockMode) {
+            this.output.info('Import cancelled');
+            return;
+        }
+
+        const explodeAttributesOnly = blockMode.value === 'attributes';
+        
         const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
         this.output.info('DWG import started (Z: {0}, target: {1}, size: {2} MB)', zMode.value, targetZ, fileSizeMB);
         
@@ -99,6 +115,7 @@ class DwgImporter implements WorkspaceImporter {
             const { default: DwgLoader } = await import('./loader');
             const loader = new DwgLoader(drawing, this.output);
             loader.setFlattenZ(flattenZ, targetZ);
+            loader.setExplodeAttributesOnly(explodeAttributesOnly);
             await loader.load(db);
             
             libredwg.dwg_free(dwgData);
